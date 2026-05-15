@@ -1,0 +1,21 @@
+{
+  "name": "dataproduct-builder-demo",
+  "interface": {
+    "displayName": "Data Product Builder (Demo)",
+    "shortDescription": "Demo plugin for Snowflake dbt data products."
+  },
+  "plugins": [
+    {
+      "name": "dataproduct-builder-demo",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/entropy-data/dataproduct-builder-demo.git"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Data"
+    }
+  ]
+}

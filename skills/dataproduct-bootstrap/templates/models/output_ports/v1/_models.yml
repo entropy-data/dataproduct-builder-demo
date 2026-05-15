@@ -1,0 +1,12 @@
+version: 2
+
+# Published output port tables. One model per output port; the model name
+# matches the table name in the ODCS contract. dataproduct-implement fills
+# this file with columns and tests derived from the contract.
+# models:
+#   - name: {{TABLE}}
+#     description: {{PURPOSE}}
+#     meta:
+#       data_contract:
+#         id: {{CONTRACT_ID}}
+#         file: models/output_ports/v1/{{CONTRACT_FILE}}

@@ -1,0 +1,28 @@
+{
+  "name": "dataproduct-builder-demo",
+  "owner": {
+    "name": "Entropy Data",
+    "email": "hello@entropy-data.com"
+  },
+  "description": "Demo data product builder for Snowflake.",
+  "plugins": [
+    {
+      "name": "dataproduct-builder-demo",
+      "source": {
+        "source": "github",
+        "repo": "entropy-data/dataproduct-builder-demo"
+      },
+      "description": "Demo-grade builder for Snowflake dbt data products with Entropy Data.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Entropy Data",
+        "url": "https://entropy-data.com"
+      },
+      "homepage": "https://github.com/entropy-data/dataproduct-builder-demo",
+      "repository": "https://github.com/entropy-data/dataproduct-builder-demo",
+      "license": "MIT",
+      "keywords": ["dbt", "data-product", "data-contract", "entropy-data", "snowflake", "demo"],
+      "category": "Data"
+    }
+  ]
+}

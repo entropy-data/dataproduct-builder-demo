@@ -1,0 +1,16 @@
+version: 2
+
+# Declare external Snowflake sources you read from. The dataproduct-implement
+# skill writes one file per active access agreement:
+#
+#   models/input_ports/<provider-output-port-id>.source.yaml
+#
+# Example:
+#
+# version: 2
+# sources:
+#   - name: <provider-data-product-id>_<provider-output-port-id>
+#     database: <database>
+#     schema: <schema>
+#     tables:
+#       - name: <table>
