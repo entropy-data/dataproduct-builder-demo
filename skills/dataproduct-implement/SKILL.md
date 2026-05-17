@@ -22,7 +22,7 @@ Before running Step 0, print this plan to the user verbatim:
 
 > Running **dataproduct-implement**. I'll:
 > 1. Pre-checks: confirm this is a dbt project; `dbt`, `dbt-ol`, `datacontract`, and `entropy-data` are on PATH; Entropy Data + Snowflake env-var credentials are present. (I'll assume your `~/.dbt/profiles.yml` Snowflake target is already working.)
-> 2. Resolve the data product by id or URL (`entropy-data dataproducts get`).
+> 2. Resolve the data product by id (`entropy-data dataproducts get <id>`).
 > 3. Fetch each output port's data contract (`entropy-data datacontracts get`) and save it to `models/output_ports/v<N>/`.
 > 4. Translate the ODCS schema into dbt models: SQL column projections + `_models.yml` tests.
 > 5. Wire input ports from active access agreements, write sources, project columns 1:1, leave the rest as TODOs.
@@ -50,10 +50,12 @@ Then proceed.
 
 Accept either a full URL (`https://app.entropy-data.com/<org>/dataproducts/<id>`, extract the trailing id) or a bare id.
 
-Run `entropy-data dataproducts get <id> -o yaml`. Remember the response as `DATA_PRODUCT`. Extract:
+Load the data product ODPS via the `entropy-data` CLI: run `entropy-data dataproducts get <id> -o yaml`. Remember the response as `DATA_PRODUCT`. Extract:
 
 - `DATA_PRODUCT_ID`, `DATA_PRODUCT_NAME`, owning team, purpose
 - the list of output ports — each has an id, a server (database/schema/table), and a linked data contract id
+
+Always use the `entropy-data` CLI for any connection to Entropy Data (data products, data contracts, access, publishing). Do not use the Entropy Data MCP server for these calls.
 
 If the data product has more than one output port, ask the user which one(s) to implement. Default to all.
 

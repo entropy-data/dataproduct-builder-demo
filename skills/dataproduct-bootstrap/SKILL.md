@@ -78,6 +78,8 @@ Derive:
 
 Resolve `API_HOST` from the entropy-data CLI connection: `entropy-data connection get -o json` → `host`. If the CLI is not connected, stop and tell the user to run `entropy-data connection add <name> --host <host> --api-key <key>` first. The demo does not run without a working connection.
 
+Always use the `entropy-data` CLI for any connection to Entropy Data. Do not use the Entropy Data MCP server.
+
 ### Step 3 — Scaffold the project
 
 Templates live under `${PLUGIN_ROOT}/skills/dataproduct-bootstrap/templates/`. Copy each one into the working directory, substituting placeholders.
