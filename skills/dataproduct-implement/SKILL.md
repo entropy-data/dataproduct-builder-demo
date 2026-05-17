@@ -21,7 +21,7 @@ Turn an Entropy Data data product into a working Snowflake dbt pipeline and prov
 Before running Step 0, print this plan to the user verbatim:
 
 > Running **dataproduct-implement**. I'll:
-> 1. Pre-checks: confirm this is a dbt project; `dbt`, `dbt-ol`, `datacontract`, and `entropy-data` are on PATH; Entropy Data + Snowflake env-var credentials are present. (I'll assume your `~/.dbt/profiles.yml` Snowflake target is already working.)
+> 1. Pre-checks: confirm this is a dbt project; `dbt`, `dbt-ol`, `datacontract`, `entropy-data`, `jq`, and `yq` are on PATH; the Entropy Data API key is available from `entropy-data connection`; Snowflake credentials are readable from `~/.dbt/profiles.yml`.
 > 2. Resolve the data product by id (`entropy-data dataproducts get <id>`).
 > 3. Fetch each output port's data contract (`entropy-data datacontracts get`) and save it to `models/output_ports/v<N>/`.
 > 4. Translate the ODCS schema into dbt models: SQL column projections + `_models.yml` tests.
@@ -38,13 +38,13 @@ Then proceed.
 ### Step 0 — Pre-checks
 
 - Confirm `dbt_project.yml` exists at the working directory root. If not, route the user to `dataproduct-bootstrap` and stop.
-- Confirm `dbt --version`, `dbt-ol --version`, `datacontract --version`, and `entropy-data --version` are on PATH. If any are missing, surface the install line (`uv pip install dbt-core dbt-snowflake openlineage-dbt 'datacontract-cli[snowflake]' entropy-data`) and stop.
+- Confirm `dbt --version`, `dbt-ol --version`, `datacontract --version`, and `entropy-data --version` are on PATH. If any are missing, surface the install line (`uv pip install dbt-core dbt-snowflake openlineage-dbt 'datacontract-cli[snowflake]' entropy-data`) and stop. Also confirm `jq` and `yq` are on PATH — they are used to derive credentials below.
 - Confirm `entropy-data connection test` succeeds. If not, stop and tell the user to run `entropy-data connection add <name> --host <host> --api-key <key>`.
-- **Assume the user has a working Snowflake dbt profile.** Do not audit `~/.dbt/profiles.yml`; if it is misconfigured, `dbt parse` / `dbt-ol run` will surface a clear error and the user can fix it then.
-- Verify the env vars needed for Step 7–9 are present and ask before continuing if any are missing:
-  - `OPENLINEAGE__TRANSPORT__AUTH__APIKEY` (for `dbt-ol run`)
-  - `DATACONTRACT_SNOWFLAKE_USERNAME`, `DATACONTRACT_SNOWFLAKE_PASSWORD`, `DATACONTRACT_SNOWFLAKE_ROLE`, `DATACONTRACT_SNOWFLAKE_WAREHOUSE` (for `datacontract test`)
-  Do not source credentials yourself; surface what's missing.
+- **Assume the user has a working Snowflake dbt profile.** Do not audit `~/.dbt/profiles.yml` for correctness; if it is misconfigured, `dbt parse` / `dbt-ol run` will surface a clear error and the user can fix it then.
+- **Derive runtime credentials from existing config — do not require the user to export env vars.** Resolve them once here and reuse them inline in Step 6 / Step 8:
+  - `OPENLINEAGE__TRANSPORT__AUTH__APIKEY` ← `entropy-data connection get -o json | jq -r .apiKey` (the active connection's API key).
+  - `DATACONTRACT_SNOWFLAKE_USERNAME` / `_PASSWORD` / `_ROLE` / `_WAREHOUSE` ← `~/.dbt/profiles.yml`. The profile is `yq '.profile' dbt_project.yml`; the target is the profile's `target:` (or the explicit `--target` you'll pass to dbt); read `user` / `password` / `role` / `warehouse` from `outputs.<target>`.
+  If a value is genuinely missing from both sources (e.g. the connection has no `apiKey`, or the dbt profile is missing `password`), stop and tell the user which source to fix. Do not echo or persist these values; export them only as part of the command invocation that needs them.
 
 ### Step 1 — Resolve the data product
 
@@ -158,15 +158,14 @@ Confirm with the user: "Run `dbt-ol run` against your Snowflake target now? This
 
 If the user has TODOs left in any output-port model (unwired `from`, derived columns, multi-source joins), warn them that the run will fail those models. Offer to scope to only the models with no TODOs: `dbt-ol run --select <wired-model-1> <wired-model-2>`.
 
-Command (default target inferred from `dbt_project.yml`'s `profile:` block — usually `dev` for local runs):
+Command (default target inferred from `dbt_project.yml`'s `profile:` block — usually `dev` for local runs). Export the OpenLineage API key inline by reading it from the entropy-data CLI connection (resolved in Step 0); do not require the user to have it in their shell:
 
 ```
-dbt-ol run --target <target>
+OPENLINEAGE__TRANSPORT__AUTH__APIKEY=$(entropy-data connection get -o json | jq -r .apiKey) \
+  dbt-ol run --target <target>
 ```
 
-Required env vars (confirmed in Step 0):
-
-- `OPENLINEAGE__TRANSPORT__AUTH__APIKEY` — the Entropy Data API key, so the lineage transport in `openlineage.yml` authenticates.
+This is the Entropy Data API key the lineage transport in `openlineage.yml` uses to authenticate.
 
 Capture stdout and exit code. Non-zero means at least one model failed; surface the dbt log section, do not retry silently.
 
@@ -182,17 +181,19 @@ Captures the contract-derived tests (`not_null`, `unique`, `accepted_values`) ad
 
 ### Step 8 — `datacontract test`
 
-For each output-port contract:
+For each output-port contract, derive the Snowflake credentials from the dbt profile (as resolved in Step 0) and export them inline — do not require the user to set `DATACONTRACT_SNOWFLAKE_*` in their shell:
 
 ```
-datacontract test models/output_ports/v<N>/<contract-id>.odcs.yaml --server production --logs
+PROFILE=$(yq '.profile' dbt_project.yml)
+TARGET=$(yq ".${PROFILE}.target" ~/.dbt/profiles.yml)   # or the --target passed earlier
+DATACONTRACT_SNOWFLAKE_USERNAME=$(yq ".${PROFILE}.outputs.${TARGET}.user"     ~/.dbt/profiles.yml) \
+DATACONTRACT_SNOWFLAKE_PASSWORD=$(yq ".${PROFILE}.outputs.${TARGET}.password" ~/.dbt/profiles.yml) \
+DATACONTRACT_SNOWFLAKE_ROLE=$(yq     ".${PROFILE}.outputs.${TARGET}.role"     ~/.dbt/profiles.yml) \
+DATACONTRACT_SNOWFLAKE_WAREHOUSE=$(yq ".${PROFILE}.outputs.${TARGET}.warehouse" ~/.dbt/profiles.yml) \
+  datacontract test models/output_ports/v<N>/<contract-id>.odcs.yaml --server production --logs
 ```
 
-`--logs` ensures the failure detail (field + rule) is in stdout. Required env vars (confirmed in Step 0):
-
-- `DATACONTRACT_SNOWFLAKE_USERNAME`, `DATACONTRACT_SNOWFLAKE_PASSWORD`, `DATACONTRACT_SNOWFLAKE_ROLE`, `DATACONTRACT_SNOWFLAKE_WAREHOUSE`
-
-Non-zero exit means at least one rule failed. Capture per-contract result for the final report.
+`--logs` ensures the failure detail (field + rule) is in stdout. Non-zero exit means at least one rule failed. Capture per-contract result for the final report.
 
 ### Step 9 — Stamp the data product as builder-managed
 
