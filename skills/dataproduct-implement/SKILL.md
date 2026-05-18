@@ -90,10 +90,11 @@ For each contract:
    models:
      - name: <table>
        description: <from contract>
-       meta:
-         data_contract:
-           id: <CONTRACT_ID>
-           file: models/output_ports/v1/<contract-file>.odcs.yaml
+       config:
+         meta:
+           data_contract:
+             id: <CONTRACT_ID>
+             file: models/output_ports/v1/<contract-file>.odcs.yaml
        columns:
          - name: <col>
            description: <from contract>
@@ -128,10 +129,11 @@ For each output port:
         - name: <provider-data-product-id>_<provider-output-port-id>
           database: <database>
           schema: <schema>
-          meta:
-            data_contract:
-              id: <provider-contract-id>
-              file: models/input_ports/<provider-output-port-id>.odcs.yaml
+          config:
+            meta:
+              data_contract:
+                id: <provider-contract-id>
+                file: models/input_ports/<provider-output-port-id>.odcs.yaml
           tables:
             - name: <table>
               description: <from contract>
