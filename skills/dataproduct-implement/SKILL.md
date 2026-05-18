@@ -72,11 +72,13 @@ You need from `CONTRACT`:
 
 ### Step 3 — Translate ODCS schema to dbt artifacts
 
+**Output column identifier rule (applies to every property in this step and Step 4).** For every contract property, resolve `OUT_COL = property.physicalName // property.name` — prefer `physicalName` when present, fall back to `name`. Use `OUT_COL` for the SQL alias **and** the `_models.yml` `columns: - name:` entry so the projected column, the dbt tests, and the materialized warehouse column all agree with what the contract declares. If `OUT_COL` is not already all-uppercase, double-quote it in the SQL alias (`as "MixedCase"`) so Snowflake preserves it verbatim instead of folding to uppercase. Note: this keeps the dbt side internally consistent; `datacontract test` keys its presence check on the contract field `name`, so a contract whose `name` and `physicalName` disagree in case is still an upstream contract bug to fix at the source.
+
 For each contract:
 
 1. Decide the dbt-side table name. Default: the `schema[0].name` from the contract. Confirm with the user if it differs from the output port's server table.
 2. **Identify candidate input ports.** Run `entropy-data access list --consumer-dataproduct <DATA_PRODUCT_ID> -o json` to list active access agreements. Each entry's `provider.dataProductId` / `provider.outputPortId` is an input port this product can read. Keep agreements with `info.active: true`; ignore `pending` / `rejected`. If `models/input_ports/<provider-output-port-id>.source.yaml` already exists for an agreement, treat it as authoritative.
-3. Generate `models/output_ports/v1/<table>.sql` — a stub `select` that projects each contract column with `cast(... as <snowflake-type>) as <column>`. Leave the `from` clause as a TODO commented with the candidate input ports from Step 3.2. Prepend a one-line header comment:
+3. Generate `models/output_ports/v1/<table>.sql` — a stub `select` that projects each contract column with `cast(... as <snowflake-type>) as <OUT_COL>` (`OUT_COL` per the output column identifier rule above). Leave the `from` clause as a TODO commented with the candidate input ports from Step 3.2. Prepend a one-line header comment:
 
    ```sql
    -- Governed by <contract-file>.odcs.yaml (ODCS id: <CONTRACT_ID>)
@@ -141,7 +143,7 @@ For each output port:
 
    One pair (`*.odcs.yaml` + `*.source.yaml`) per agreement. Surface diffs and ask before overwriting an existing file.
 
-2. **Match input columns to output columns** by name (or an obvious synonym only if the input contract's description makes it explicit). For each output column, if exactly one input has a matching column, project `cast(<input_col> as <snowflake_type>) as <output_col>`. Otherwise leave `null as <output_col>` with a `-- TODO:` comment.
+2. **Match input columns to output columns** by name — comparing against both the input property's `name` and its `physicalName` — or an obvious synonym only if the input contract's description makes it explicit. For each output column, if exactly one input has a matching column, project `cast(<input_col> as <snowflake_type>) as <OUT_COL>` (`OUT_COL` per the output column identifier rule in Step 3). Otherwise leave `null as <OUT_COL>` with a `-- TODO:` comment.
 
 3. **Write the SQL body.**
    - **Single input source, columns match 1:1** → replace the TODO `from` with `from {{ source('<provider-data-product-id>_<provider-output-port-id>', '<table>') }}`.
