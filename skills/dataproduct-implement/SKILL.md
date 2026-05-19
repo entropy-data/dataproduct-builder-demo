@@ -16,6 +16,13 @@ Turn an Entropy Data data product into a working Snowflake dbt pipeline and prov
 
 > `${PLUGIN_ROOT}` below refers to the root of this plugin — the directory that contains `skills/`. On Claude Code it is set automatically as `${CLAUDE_PLUGIN_ROOT}`; use that. On any other agent (Codex, Copilot CLI, etc.) it is unset; resolve it as `../..` relative to **this `SKILL.md` file's directory** (i.e. the grandparent of `skills/<this-skill>/`).
 
+> **Read every contract-specified value from the contract; never hardcode a
+> literal.** Server name, schema, table, and types are read at run time from
+> the data contract (e.g. `yq '.servers[0].server' <contract-file>`) — baking a
+> fixed value into a command is a bug, even if it happens to match today. The
+> data product id, when not supplied by the user, is the `id` in the local
+> `*.odps.yaml`.
+
 ### Plan announcement (before Step 0)
 
 Before running Step 0, print this plan to the user verbatim:
@@ -41,16 +48,16 @@ Then proceed.
 - Confirm `dbt --version`, `dbt-ol --version`, `datacontract --version`, and `entropy-data --version` are on PATH. If any are missing, surface the install line (`uv pip install dbt-core dbt-snowflake openlineage-dbt 'datacontract-cli[snowflake]' entropy-data`) and stop. Also confirm `jq` and `yq` are on PATH — they are used to derive credentials below.
 - Confirm `entropy-data connection test` succeeds. If not, stop and tell the user to run `entropy-data connection add <name> --host <host> --api-key <key>`.
 - **Assume the user has a working Snowflake dbt profile.** Do not audit `~/.dbt/profiles.yml` for correctness; if it is misconfigured, `dbt parse` / `dbt-ol run` will surface a clear error and the user can fix it then.
-- **Derive runtime credentials from existing config — do not require the user to export env vars.** Resolve them once here and reuse them inline in Step 6 / Step 8:
-  - `OPENLINEAGE__TRANSPORT__AUTH__APIKEY` ← `entropy-data connection get -o json | jq -r .apiKey` (the active connection's API key).
+- **Derive runtime credentials from existing config — do not require the user to export env vars.** Resolve them at the point of use:
+  - `OPENLINEAGE__TRANSPORT__AUTH__APIKEY` ← `entropy-data connection get -o json | jq -r .api_key` (the active connection's API key — note the field is `api_key`, not `apiKey`; `-o json` returns it in clear text).
   - `DATACONTRACT_SNOWFLAKE_USERNAME` / `_PASSWORD` / `_ROLE` / `_WAREHOUSE` ← `~/.dbt/profiles.yml`. The profile is `yq '.profile' dbt_project.yml`; the target is the profile's `target:` (or the explicit `--target` you'll pass to dbt); read `user` / `password` / `role` / `warehouse` from `outputs.<target>`.
-  If a value is genuinely missing from both sources (e.g. the connection has no `apiKey`, or the dbt profile is missing `password`), stop and tell the user which source to fix. Do not echo or persist these values; export them only as part of the command invocation that needs them.
+  If a value is genuinely missing from both sources (the connection has no key, or the dbt profile is missing a field), stop and tell the user which source to fix. Do not echo or persist these values; export them only inline with the command that needs them.
 
 ### Step 1 — Resolve the data product
 
-Accept either a full URL (`https://app.entropy-data.com/<org>/dataproducts/<id>`, extract the trailing id) or a bare id.
+Resolve `DATA_PRODUCT_ID`: if the user gave a full URL (`https://app.entropy-data.com/<org>/dataproducts/<id>`) take the trailing id; if they gave a bare id use it; otherwise read `.id` from the single `*.odps.yaml` in the working directory (`yq '.id' *.odps.yaml`). If none of these yields an id, ask the user.
 
-Load the data product ODPS via the `entropy-data` CLI: run `entropy-data dataproducts get <id> -o yaml`. Remember the response as `DATA_PRODUCT`. Extract:
+Load the data product ODPS via the `entropy-data` CLI: run `entropy-data dataproducts get "$DATA_PRODUCT_ID" -o yaml`. Remember the response as `DATA_PRODUCT`. Extract:
 
 - `DATA_PRODUCT_ID`, `DATA_PRODUCT_NAME`, owning team, purpose
 - the list of output ports — each has an id, a server (database/schema/table), and a linked data contract id
@@ -63,7 +70,7 @@ If the data product does not exist on Entropy Data, stop and ask the user whethe
 
 ### Step 2 — Fetch the data contract
 
-For each selected output port, run `entropy-data datacontracts get <contract-id> -o yaml`. Remember as `CONTRACT`, write it to `models/output_ports/v<N>/<contract-id>.odcs.yaml` (default `v1` if the output port does not declare a version). If the file already exists and differs, surface the diff and ask before overwriting.
+For each selected output port, run `entropy-data datacontracts get <contract-id> -o yaml` and write it to `models/output_ports/v<N>/<contract-id>.odcs.yaml` (default `v1` if the output port does not declare a version). If the file already exists and differs, surface the diff and ask before overwriting (fetch to a temp path and `diff` first). Remember as `CONTRACT`.
 
 You need from `CONTRACT`:
 
@@ -72,7 +79,7 @@ You need from `CONTRACT`:
 
 ### Step 3 — Translate ODCS schema to dbt artifacts
 
-**Output column identifier rule (applies to every property in this step and Step 4).** For every contract property, resolve `OUT_COL = property.physicalName // property.name` — prefer `physicalName` when present, fall back to `name`. Use `OUT_COL` for the SQL alias **and** the `_models.yml` `columns: - name:` entry so the projected column, the dbt tests, and the materialized warehouse column all agree with what the contract declares. If `OUT_COL` is not already all-uppercase, double-quote it in the SQL alias (`as "MixedCase"`) so Snowflake preserves it verbatim instead of folding to uppercase. Note: this keeps the dbt side internally consistent; `datacontract test` keys its presence check on the contract field `name`, so a contract whose `name` and `physicalName` disagree in case is still an upstream contract bug to fix at the source.
+**Output column identifier rule (applies to every property in this step and Step 4).** For every contract property, resolve `OUT_COL = property.physicalName // property.name` — prefer `physicalName` when present, fall back to `name`. Use `OUT_COL` for the SQL alias **and** the `_models.yml` `columns: - name:` entry so the projected column, the dbt tests, and the materialized warehouse column all agree with what the contract declares. If `OUT_COL` is not already all-uppercase, double-quote it in the SQL alias (`as "MixedCase"`) so Snowflake preserves it verbatim instead of folding to uppercase. This keeps the dbt side (projected column, tests, materialized column) aligned with the contract's `physicalName`. `datacontract test` resolves each field by `physicalName` when set (ODCS standard), so a contract whose logical `name` differs from its `physicalName` — e.g. a semantic concept `name: brand` with `physicalName: BRAND` — tests correctly against the physical column.
 
 For each contract:
 
@@ -165,7 +172,7 @@ If the user has TODOs left in any output-port model (unwired `from`, derived col
 Command (default target inferred from `dbt_project.yml`'s `profile:` block — usually `dev` for local runs). Export the OpenLineage API key inline by reading it from the entropy-data CLI connection (resolved in Step 0); do not require the user to have it in their shell:
 
 ```
-OPENLINEAGE__TRANSPORT__AUTH__APIKEY=$(entropy-data connection get -o json | jq -r .apiKey) \
+OPENLINEAGE__TRANSPORT__AUTH__APIKEY=$(entropy-data connection get -o json | jq -r .api_key) \
   dbt-ol run --target <target>
 ```
 
@@ -188,13 +195,15 @@ Captures the contract-derived tests (`not_null`, `unique`, `accepted_values`) ad
 For each output-port contract, derive the Snowflake credentials from the dbt profile (as resolved in Step 0) and export them inline — do not require the user to set `DATACONTRACT_SNOWFLAKE_*` in their shell:
 
 ```
+CONTRACT_FILE=models/output_ports/v<N>/<contract-id>.odcs.yaml
+SERVER=$(yq '.servers[0].server' "$CONTRACT_FILE")          # from the contract — never a hardcoded literal
 PROFILE=$(yq '.profile' dbt_project.yml)
 TARGET=$(yq ".${PROFILE}.target" ~/.dbt/profiles.yml)   # or the --target passed earlier
 DATACONTRACT_SNOWFLAKE_USERNAME=$(yq ".${PROFILE}.outputs.${TARGET}.user"     ~/.dbt/profiles.yml) \
 DATACONTRACT_SNOWFLAKE_PASSWORD=$(yq ".${PROFILE}.outputs.${TARGET}.password" ~/.dbt/profiles.yml) \
 DATACONTRACT_SNOWFLAKE_ROLE=$(yq     ".${PROFILE}.outputs.${TARGET}.role"     ~/.dbt/profiles.yml) \
 DATACONTRACT_SNOWFLAKE_WAREHOUSE=$(yq ".${PROFILE}.outputs.${TARGET}.warehouse" ~/.dbt/profiles.yml) \
-  datacontract test models/output_ports/v<N>/<contract-id>.odcs.yaml --server production --logs
+  datacontract test "$CONTRACT_FILE" --server "$SERVER" --logs
 ```
 
 `--logs` ensures the failure detail (field + rule) is in stdout. Non-zero exit means at least one rule failed. Capture per-contract result for the final report.
@@ -250,6 +259,7 @@ If everything passed and there are no TODOs, write: `Pipeline implemented, mater
 
 - **Snowflake only.** The type map, profiles, and CLI invocations are Snowflake-specific. If the user's profile is not Snowflake, stop.
 - **Contract is source of truth for schema, not logic.** Generate columns, types, and tests from the contract. Project and cast in SQL only — do not invent joins, aggregations, or column derivations.
+- **Never hardcode a contract-specified value.** Server name, schema, table, and types are read from the contract at run time. A literal baked into a command is a bug even when it currently matches.
 - **Don't overwrite existing dbt SQL silently.** Surface the diff and ask.
 - **Don't auto-fix failing dbt or datacontract tests.** Report them; the fix belongs to the user.
 - **Don't push or commit.** Leave VCS state to the user.
