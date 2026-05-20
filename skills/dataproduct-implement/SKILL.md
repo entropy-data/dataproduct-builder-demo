@@ -46,24 +46,18 @@ Then proceed.
 ### Step 0 — Pre-checks
 
 - Confirm `dbt_project.yml` exists at the working directory root. If not, route the user to `dataproduct-bootstrap` and stop.
-- Confirm `dbt --version`, `dbt-ol --version`, `datacontract --version`, and `entropy-data --version` are on PATH, and that `dbt` knows about the Snowflake adapter (`dbt --version` lists it under `Plugins:`). Recovery, in this order:
-  - **If `.venv` exists** in the working directory, activate it (`source .venv/bin/activate`) and re-check. dbt projects often install their toolchain into a project-local venv and shell state doesn't carry between bash calls.
-  - **If `.venv` does not exist** but a `README.md` setup section says to create one, run the setup verbatim. For this demo family the canonical line is:
-    ```
-    uv venv && source .venv/bin/activate && \
-      uv pip install dbt-core dbt-snowflake openlineage-dbt 'datacontract-cli[snowflake]' entropy-data
-    ```
-    Then activate it and re-check.
-  - **If `dbt` is present but missing the Snowflake adapter** (`dbt parse` would fail with `No module named 'dbt.adapters.snowflake'`), the dbt tool was installed without `dbt-snowflake`. Don't try to fix this with `uv tool install openlineage-dbt --with dbt-snowflake` — that adds the adapter to dbt-ol's venv, not dbt's. Either create a venv (preferred, per the line above) or `uv tool install --upgrade dbt-core --with dbt-snowflake --with openlineage-dbt` to keep everything in one tool venv.
-  - **If anything is still missing**, surface the install line and stop. Do not paper over a broken toolchain by `uv tool install`ing each binary into its own venv — `dbt`, `dbt-ol`, and `datacontract` need to see the same Snowflake adapter and dbt project.
-  - Also confirm `jq` and `yq` are on PATH — they are used to derive credentials below.
-- Confirm `entropy-data connection test` succeeds. If not, stop and tell the user to run `entropy-data connection add <name> --host <host> --api-key <key>`.
-- **Assume the user has a working Snowflake dbt profile.** Do not audit `~/.dbt/profiles.yml` for correctness; if it is misconfigured, `dbt parse` / `dbt-ol run` will surface a clear error and the user can fix it then.
-- **Derive runtime credentials and OpenLineage transport target from the active connection — do not require the user to export env vars, and do not trust a `url:` that may be baked into `openlineage.yml`.** Resolve them at the point of use:
-  - `OPENLINEAGE__TRANSPORT__URL` ← `entropy-data connection get -o json | jq -r .host` (the active connection's host). The env var overrides any `url:` in `openlineage.yml`, so the lineage event always ships to the deployment the user is currently authenticated against — independent of what the repo happens to have committed in that file.
-  - `OPENLINEAGE__TRANSPORT__AUTH__APIKEY` ← `entropy-data connection get -o json | jq -r .api_key` (the active connection's API key — note the field is `api_key`, not `apiKey`; `-o json` returns it in clear text).
-  - `DATACONTRACT_SNOWFLAKE_USERNAME` / `_PASSWORD` / `_ROLE` / `_WAREHOUSE` ← `~/.dbt/profiles.yml`. The profile is `yq '.profile' dbt_project.yml`; the target is the profile's `target:` (or the explicit `--target` you'll pass to dbt); read `user` / `password` / `role` / `warehouse` from `outputs.<target>`.
-  If a value is genuinely missing from both sources (the connection has no host/key, or the dbt profile is missing a field), stop and tell the user which source to fix. Do not echo or persist these values; export them only inline with the command that needs them.
+- **Set up (or refresh) the project-local venv with the full toolchain.** This is idempotent — `uv pip install` is a no-op when the dependency is already satisfied:
+
+  ```bash
+  [ -d .venv ] || uv venv
+  source .venv/bin/activate
+  uv pip install --quiet dbt-core dbt-snowflake openlineage-dbt 'datacontract-cli[snowflake]' entropy-data
+  ```
+
+  **Activate the venv before every bash call in subsequent steps** — shell state doesn't carry between bash invocations. Don't fall back to `uv tool install` for individual binaries; `dbt`, `dbt-ol`, and `datacontract` must share a single Python env so the Snowflake adapter is visible to all three.
+- Confirm `entropy-data connection test` succeeds. Otherwise stop and tell the user to run `entropy-data connection add <name> --host <host> --api-key <key>`.
+- Confirm `jq` and `yq` are on PATH (system binaries, not pip-installed). Otherwise stop with `brew install jq yq` (macOS) or the apt equivalent.
+- Assume the user has a working Snowflake dbt profile. Don't audit `~/.dbt/profiles.yml`; if it's misconfigured, `dbt parse` / `dbt-ol run` will surface a clear error.
 
 ### Step 1 — Resolve the data product
 
@@ -82,16 +76,11 @@ If the data product does not exist on Entropy Data, stop and ask the user whethe
 
 ### Step 2 — Fetch the data contract
 
-For each selected output port, run `entropy-data datacontracts get <contract-id> -o yaml` and write it to `datacontracts/<table>_v<N>.odcs.yaml` (where `<table>` is the schema's snake-case `name`, `<N>` is the contract version's major; default `v1`). The repository convention follows the [Building Data Products with dbt guide](https://www.entropy-data.com/learn/data-products-with-dbt) — top-level `datacontracts/` dir, snake_case file name. Remember as `CONTRACT`.
+For each selected output port: `entropy-data datacontracts get <contract-id> -o yaml`, written to `datacontracts/<table>_v<N>.odcs.yaml` (snake-case `name` from `schema[0]`, major version, default `v1`). Layout follows the [Building Data Products with dbt guide](https://www.entropy-data.com/learn/data-products-with-dbt). Remember as `CONTRACT`.
 
-**Treat the remote contract as the source of truth.** If the local file already exists and differs, the divergence is the *point* of the run — someone (often via the data-product builder UI) added or changed columns and now expects the implementation to catch up. Always overwrite the local file with the remote response. Do not ask the user, do not preserve "local because the SQL is richer" — the SQL lives in a separate file and Step 3 preserves it.
+**Always overwrite the local file with the remote response.** The remote contract is the spec; the local SQL is the implementation. A divergence is the whole point of the run — someone changed the contract and the implementation needs to catch up. (Step 3 appends column projections to the existing SQL without touching CTEs / joins / filters, so the implementation logic is safe.)
 
-When the new local contract contains a column that's not yet projected by the existing `<table>.sql` model, Step 3 must add the projection (do not skip on the assumption that "regeneration would lose business logic" — Step 3 only appends; it never rewrites existing CTEs).
-
-You need from `CONTRACT`:
-
-- `schema` (table name → properties list with `logicalType`, `required`, `primaryKey`, `unique`, `description`, `classification`)
-- `servers` (the Snowflake server the contract test will run against)
+From `CONTRACT` you'll need `schema` (table + properties: `logicalType`, `required`, `primaryKey`, `unique`, `description`, `classification`) and `servers` (Snowflake server the contract test runs against).
 
 ### Step 3 — Translate ODCS schema to dbt artifacts
 
@@ -101,11 +90,11 @@ For each contract:
 
 1. Decide the dbt-side table name. Default: the `schema[0].name` from the contract. Confirm with the user if it differs from the output port's server table.
 2. **Identify candidate input ports.** Run `entropy-data access list --consumer-dataproduct <DATA_PRODUCT_ID> -o json` to list active access agreements. Each entry's `provider.dataProductId` / `provider.outputPortId` is an input port this product can read. Keep agreements with `info.active: true`; ignore `pending` / `rejected`. If `models/input_ports/<provider-output-port-id>.source.yaml` already exists for an agreement, treat it as authoritative.
-3. Generate or update `models/output_ports/<table>.sql`. The file may already exist with non-trivial business logic (CTEs, joins, window functions); **never rewrite it**. The only edits allowed in this step are:
-   - If the file does not exist: create it as a stub `select` that projects each contract column with `cast(... as <snowflake-type>) as <OUT_COL>` (`OUT_COL` per the output column identifier rule above), with the `from` clause left as a TODO commented with the candidate input ports from Step 3.2.
-   - If the file exists: locate the final `select` block (the one that produces the model's output rows) and **append** a new `cast(... as <type>) as <OUT_COL>` line for every contract column that's not already in that select list. Add the column projections in the order they appear in the contract. Fix the trailing comma so the final list is comma-correct. Touch nothing else: existing CTEs, joins, filter clauses, and projections stay byte-identical.
+3. Generate or update `models/output_ports/<table>.sql`. The file may already exist with non-trivial business logic — CTEs, joins, window functions — **never rewrite it**. Only two edits are allowed:
+   - **File doesn't exist** → create a stub `select` that projects each contract column as `cast(... as <snowflake-type>) as <OUT_COL>` (`OUT_COL` per the rule above); leave the `from` clause as a TODO citing the candidate input ports from Step 3.2.
+   - **File exists** → in the final `select` block, **append** `cast(... as <type>) as <OUT_COL>` for every contract column not already projected, in contract order, fixing the trailing comma. Everything else (CTEs, joins, filters, existing projections) stays byte-identical.
 
-   Whether new or updated, the file must start with the dbt config and a one-line header comment:
+   The file must start with:
 
    ```sql
    {{ config(materialized='table', schema='op_v1') }}
@@ -113,9 +102,9 @@ For each contract:
    -- Governed by <contract-file>.odcs.yaml (ODCS id: <CONTRACT_ID>)
    ```
 
-   The `schema='op_v1'` override is required: it puts the output table in a separate schema from the staging / intermediate models, per https://www.entropy-data.com/learn/data-products-with-dbt. dbt concatenates the profile's default schema with `op_v1` to produce the physical schema (e.g. profile schema `dp_shelf_warmers` → output schema `DP_SHELF_WARMERS_OP_V1` after Snowflake folds to uppercase). The data contract's `servers[].schema` must match that concatenated value.
+   `schema='op_v1'` separates the output table from staging/intermediate models — dbt concatenates this with the profile's default schema (per [the guide](https://www.entropy-data.com/learn/data-products-with-dbt)) so the materialized schema name matches the contract's `servers[].schema`.
 
-4. Generate or update `models/output_ports/<table>.yml` (one YAML file per model, named after the model). If the file does not exist, create it with the structure below. If it exists, append a `columns:` entry for every contract column that's not already listed. Leave existing column descriptions and `data_tests` alone.
+4. Generate or update `models/output_ports/<table>.yml` — one YAML file per model. New file → create with the structure below. Existing file → append `columns:` entries for contract columns not already listed; leave existing entries alone.
 
    ```yaml
    version: 2
@@ -137,11 +126,11 @@ For each contract:
            description: <from contract>
            data_type: <UPPERCASE Snowflake type>
            constraints:
-             - type: not_null   # only when required: true
-             - type: unique     # only when unique: true or primaryKey: true
+             - type: not_null   # required: true
+             - type: unique     # unique: true or primaryKey: true
    ```
 
-   Translate ODCS rules to dbt constraints: `required: true` → `not_null`, `unique: true` or `primaryKey: true` → `unique` (+ `not_null`), enum → `accepted_values` (under `data_tests:` rather than `constraints:`).
+   ODCS → dbt: `required: true` → `not_null` constraint, `unique: true` or `primaryKey: true` → `unique` + `not_null` constraints, `enum` → `accepted_values` (under `data_tests:`, not `constraints:`).
 
 5. Map ODCS `logicalType` to Snowflake types:
 
@@ -202,7 +191,7 @@ Confirm with the user: "Run `dbt-ol run` against your Snowflake target now? This
 
 If the user has TODOs left in any output-port model (unwired `from`, derived columns, multi-source joins), warn them that the run will fail those models. Offer to scope to only the models with no TODOs: `dbt-ol run --select <wired-model-1> <wired-model-2>`.
 
-Command (default target inferred from `dbt_project.yml`'s `profile:` block — usually `dev` for local runs). Export the OpenLineage transport URL **and** API key inline by reading them from the entropy-data CLI connection (resolved in Step 0); do not require the user to have them in their shell, and do not trust whatever `url:` `openlineage.yml` happens to contain:
+Run with both OpenLineage env vars derived inline from the active `entropy-data connection` (target inferred from `dbt_project.yml`'s `profile:` — usually `dev` locally):
 
 ```
 OPENLINEAGE__TRANSPORT__URL=$(entropy-data connection get -o json | jq -r .host) \
@@ -210,9 +199,7 @@ OPENLINEAGE__TRANSPORT__AUTH__APIKEY=$(entropy-data connection get -o json | jq 
   dbt-ol run --target <target>
 ```
 
-`OPENLINEAGE__TRANSPORT__URL` is the host the lineage event is shipped to; `OPENLINEAGE__TRANSPORT__AUTH__APIKEY` is the Entropy Data API key it authenticates with. Both come from the active `entropy-data connection`, so the run targets whatever deployment (cloud, self-hosted, local) the user is currently authenticated against — regardless of what (if anything) the repo's `openlineage.yml` declares.
-
-**Both env vars must be set on the same command** — the committed `openlineage.yml` intentionally omits `url:`, so a run with only `__APIKEY` fails with `RuntimeError: 'url' key not passed to HttpConfig` from inside the OpenLineage client before dbt even starts. If you see that error, the fix is to add `__URL` back to the *same* invocation, not to set it and re-run with just `__URL`.
+**Both env vars must be set on the same command.** The committed `openlineage.yml` intentionally omits `url:`, so a run with only `__APIKEY` fails with `RuntimeError: 'url' key not passed to HttpConfig` before dbt even starts. The fix is to add `__URL` back to the *same* invocation, not to retry with just `__URL` set.
 
 Capture stdout and exit code. Non-zero means at least one model failed; surface the dbt log section, do not retry silently.
 
@@ -228,7 +215,7 @@ Captures the contract-derived tests (`not_null`, `unique`, `accepted_values`) ad
 
 ### Step 8 — `datacontract test`
 
-For each output-port contract, derive the Snowflake credentials from the dbt profile (as resolved in Step 0) and export them inline — do not require the user to set `DATACONTRACT_SNOWFLAKE_*` in their shell:
+For each output-port contract, derive the Snowflake credentials from the dbt profile inline — don't require the user to set `DATACONTRACT_SNOWFLAKE_*` in their shell:
 
 ```
 CONTRACT_FILE=datacontracts/<table>_v<N>.odcs.yaml
@@ -318,9 +305,7 @@ If everything passed and there are no TODOs, write: `Pipeline implemented, mater
 ## Constraints
 
 - **Snowflake only.** The type map, profiles, and CLI invocations are Snowflake-specific. If the user's profile is not Snowflake, stop.
-- **Contract is source of truth for schema, not logic.** Generate columns, types, and tests from the contract. Project and cast in SQL only — do not invent joins, aggregations, or column derivations.
-- **Never hardcode a contract-specified value.** Server name, schema, table, and types are read from the contract at run time. A literal baked into a command is a bug even when it currently matches.
-- **Don't overwrite existing dbt SQL silently.** Surface the diff and ask.
+- **Contract is source of truth for schema, not logic.** Columns / types / tests come from the contract; joins, aggregations, and derivations stay in the user's SQL.
 - **Don't auto-fix failing dbt or datacontract tests.** Report them; the fix belongs to the user.
 - **Don't push or commit.** Leave VCS state to the user.
 - **Idempotent.** Re-running on the same data product when files already match the contract is a no-op (except the run/test commands, which always re-execute).
