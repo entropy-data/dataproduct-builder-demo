@@ -38,7 +38,8 @@ Before running Step 0, print this plan to the user verbatim:
 > 8. Run `dbt test` against the same target.
 > 9. Run `datacontract test` against each output-port contract.
 > 10. Stamp the data product on Entropy Data with the `dataProductBuilder` customProperty.
-> 11. Summarize what was generated, what ran, and what's still TODO.
+> 11. Trigger a Snowflake re-ingest so the platform's asset inventory picks up the new tables (`entropy-data integrations run`).
+> 12. Summarize what was generated, what ran, and what's still TODO.
 
 Then proceed.
 
@@ -184,6 +185,8 @@ OPENLINEAGE__TRANSPORT__AUTH__APIKEY=$(entropy-data connection get -o json | jq 
 
 `OPENLINEAGE__TRANSPORT__URL` is the host the lineage event is shipped to; `OPENLINEAGE__TRANSPORT__AUTH__APIKEY` is the Entropy Data API key it authenticates with. Both come from the active `entropy-data connection`, so the run targets whatever deployment (cloud, self-hosted, local) the user is currently authenticated against — regardless of what (if anything) the repo's `openlineage.yml` declares.
 
+**Both env vars must be set on the same command** — the committed `openlineage.yml` intentionally omits `url:`, so a run with only `__APIKEY` fails with `RuntimeError: 'url' key not passed to HttpConfig` from inside the OpenLineage client before dbt even starts. If you see that error, the fix is to add `__URL` back to the *same* invocation, not to set it and re-run with just `__URL`.
+
 Capture stdout and exit code. Non-zero means at least one model failed; surface the dbt log section, do not retry silently.
 
 If `dbt-ol run` succeeded, **the data product is now visible with materialized tables AND a lineage event in Entropy Data.** Tell the user this explicitly in the final report — it is the whole point of the demo.
@@ -232,7 +235,30 @@ Otherwise:
 3. `entropy-data dataproducts put <DATA_PRODUCT_ID> --file /tmp/<DATA_PRODUCT_ID>.odps.yaml`
 4. Delete the temp file.
 
-### Step 10 — Final report
+### Step 10 — Refresh the platform's asset inventory
+
+The Entropy Data platform sees a Snowflake table only after its Snowflake integration ingests the schema. Until the next ingestion, the table dbt just materialized doesn't show up under the data product, and the schema-drift warning on the data contract page won't clear. Trigger a manual run so the inventory catches up.
+
+The integration to trigger is the one that scans the output port's database. Find it:
+
+```bash
+entropy-data integrations list --source snowflake -o json \
+  | jq '.[] | {ingestionId, externalId, name}'
+```
+
+If exactly one Snowflake integration is configured (the common case on demo orgs), grab its `externalId` and trigger it:
+
+```bash
+entropy-data integrations run <externalId>
+```
+
+The call returns immediately with a `scheduledAt` timestamp (202). The ingestion runs in the background — typically a few minutes on a small Snowflake account, longer on larger ones. Don't pass `--wait` from this skill; the ingest is not on the critical path for the demo, and waiting would block the final report.
+
+If the listing returns multiple Snowflake integrations, match the one whose `assetOwnerTeamExternalId` equals the data product's team external id; if still ambiguous, ask the user to pick and re-run with that `externalId`. If none are configured, skip this step entirely and call it out in the final report — the data product still works; the asset inventory just lags until the next scheduled run.
+
+If the call returns 409 (`already_running`), don't try to cancel — note it in the final report ("re-ingest already in flight") and continue.
+
+### Step 11 — Final report
 
 End with this two-part recap. Use the `Status` enum: `created`, `updated`, `already present`, `passed`, `failed`, `skipped`.
 
@@ -251,6 +277,7 @@ End with this two-part recap. Use the `Status` enum: `created`, `updated`, `alre
 | `dbt-ol run` | … | "passed — N models materialized, lineage shipped to `<API_HOST>`" / "failed" / "skipped" |
 | `dbt test` | … | "passed — N tests" / "failed: N of M" / "skipped" |
 | `datacontract test` | … | per contract: "passed" / "failed: <count>" / "skipped" |
+| Snowflake re-ingest | … | "triggered: `<integration-externalId>`" / "already running" / "skipped: no Snowflake integration" |
 
 **Part 2 — next steps.** Bullet list, only what applies:
 
