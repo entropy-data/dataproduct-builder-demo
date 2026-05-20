@@ -9,5 +9,8 @@
       role: <fill in>
       database: {{DATABASE}}
       warehouse: <fill in>
-      schema: {{SCHEMA}}
+      # Profile schema is the internal layer (staging, intermediate). The output
+      # port model overrides this via config(schema='op_v1'), landing in the
+      # contract-described OUTPUT_PORT_SCHEMA.
+      schema: {{DBT_PROJECT_NAME}}
       threads: 4

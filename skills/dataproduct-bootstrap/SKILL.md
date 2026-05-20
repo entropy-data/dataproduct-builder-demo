@@ -41,7 +41,7 @@ Before running Step 1, print this plan to the user verbatim:
 
 > Running **dataproduct-bootstrap**. I'll:
 > 1. Pre-check: confirm the working directory is empty.
-> 2. Ask you for parameters in one batched question (id, name, purpose, team, Snowflake database/schema, table).
+> 2. Ask you for parameters in one batched question (id, name, purpose, team, Snowflake database, output port table).
 > 3. Scaffold the dbt project (dbt_project.yml, profiles.yml.example, model layout, README, .gitignore).
 > 4. Scaffold the publishing layer (ODPS, output-port ODCS, openlineage.yml, GitHub Actions workflow).
 > 5. Summarize what was scaffolded and the next manual steps.
@@ -64,17 +64,17 @@ Ask the user for these in a single prompt. Do not generate any files until you h
 | `PURPOSE` | One sentence — why this data product exists | `Customer activity for customer success.` |
 | `TEAM_NAME` | Owning team id (free-text accepted for the demo) | `customer-success` |
 | `DATABASE` | Snowflake database | `ENTROPY_DATA_PROD` |
-| `SCHEMA` | Snowflake schema | `DP_ACME_CUSTOMER_ACTIVITY` |
 | `TABLE` | First output port table name | `customer_activity` |
 
-Derive:
+Derive (per https://www.entropy-data.com/learn/data-products-with-dbt):
 
-- `DBT_PROJECT_NAME` = `DATA_PRODUCT_ID`
+- `DBT_PROJECT_NAME` = `DATA_PRODUCT_ID` — also the dbt profile name and the profile's default schema (the *internal* layer: staging + intermediate models materialize here).
 - `OUTPUT_PORT_NAME` = `DATA_PRODUCT_ID`
 - `CONTRACT_ID` = `<DATA_PRODUCT_ID>-v1`
 - `CONTRACT_FILE` = `<CONTRACT_ID>.odcs.yaml`
 - `CONTRACT_PATH` = `models/output_ports/v1/<CONTRACT_FILE>`
 - `ODPS_FILE` = `<DATA_PRODUCT_ID>.odps.yaml`
+- `OUTPUT_PORT_SCHEMA` = `<DBT_PROJECT_NAME>_OP_V1` — the schema dbt produces by concatenating the profile schema with the output port model's `schema='op_v1'` override. This is the schema the data contract and the platform's integration scan target. Snowflake uppercases unquoted identifiers, so this value is uppercase regardless of how `DATA_PRODUCT_ID` was entered.
 
 Resolve `API_HOST` from the entropy-data CLI connection: `entropy-data connection get -o json` → `host`. If the CLI is not connected, stop and tell the user to run `entropy-data connection add <name> --host <host> --api-key <key>` first. The demo does not run without a working connection.
 

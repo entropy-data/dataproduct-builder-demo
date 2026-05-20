@@ -31,4 +31,5 @@ servers:
   - server: production
     type: snowflake
     database: "{{DATABASE}}"
-    schema: "{{SCHEMA}}"
+    # Output-port schema is derived from the profile schema by dbt: <SCHEMA>_OP_V1.
+    schema: "{{OUTPUT_PORT_SCHEMA}}"

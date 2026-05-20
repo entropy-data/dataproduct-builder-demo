@@ -16,7 +16,7 @@ outputPorts:
       - property: "database"
         value: "{{DATABASE}}"
       - property: "schema"
-        value: "{{SCHEMA}}"
+        value: "{{OUTPUT_PORT_SCHEMA}}"
       - property: "table"
         value: "{{TABLE}}"
       - property: "contractServer"

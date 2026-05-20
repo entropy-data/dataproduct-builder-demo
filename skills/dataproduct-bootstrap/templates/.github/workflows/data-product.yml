@@ -35,7 +35,7 @@ jobs:
         run: |
           mkdir -p ~/.dbt
           cat > ~/.dbt/profiles.yml <<EOF
-          {{DBT_PROFILE}}:
+          {{DBT_PROJECT_NAME}}:
             target: prod
             outputs:
               prod:
@@ -46,7 +46,7 @@ jobs:
                 role: ${DBT_SNOWFLAKE_ROLE}
                 warehouse: ${DBT_SNOWFLAKE_WAREHOUSE}
                 database: {{DATABASE}}
-                schema: {{SCHEMA}}
+                schema: {{DBT_PROJECT_NAME}}
                 threads: 4
           EOF
 

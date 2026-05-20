@@ -86,11 +86,15 @@ For each contract:
 
 1. Decide the dbt-side table name. Default: the `schema[0].name` from the contract. Confirm with the user if it differs from the output port's server table.
 2. **Identify candidate input ports.** Run `entropy-data access list --consumer-dataproduct <DATA_PRODUCT_ID> -o json` to list active access agreements. Each entry's `provider.dataProductId` / `provider.outputPortId` is an input port this product can read. Keep agreements with `info.active: true`; ignore `pending` / `rejected`. If `models/input_ports/<provider-output-port-id>.source.yaml` already exists for an agreement, treat it as authoritative.
-3. Generate `models/output_ports/v1/<table>.sql` — a stub `select` that projects each contract column with `cast(... as <snowflake-type>) as <OUT_COL>` (`OUT_COL` per the output column identifier rule above). Leave the `from` clause as a TODO commented with the candidate input ports from Step 3.2. Prepend a one-line header comment:
+3. Generate `models/output_ports/v1/<table>.sql` — a stub `select` that projects each contract column with `cast(... as <snowflake-type>) as <OUT_COL>` (`OUT_COL` per the output column identifier rule above). Leave the `from` clause as a TODO commented with the candidate input ports from Step 3.2. Prepend the dbt config and a one-line header comment:
 
    ```sql
+   {{ config(materialized='table', schema='op_v1') }}
+
    -- Governed by <contract-file>.odcs.yaml (ODCS id: <CONTRACT_ID>)
    ```
+
+   The `schema='op_v1'` override is required: it puts the output table in a separate schema from the staging / intermediate models, per https://www.entropy-data.com/learn/data-products-with-dbt. dbt concatenates the profile's default schema with `op_v1` to produce the physical schema (e.g. profile schema `dp_shelf_warmers` → output schema `DP_SHELF_WARMERS_OP_V1` after Snowflake folds to uppercase). The data contract's `servers[].schema` must match that concatenated value.
 
 4. Append the model to `models/output_ports/v1/_models.yml`:
 

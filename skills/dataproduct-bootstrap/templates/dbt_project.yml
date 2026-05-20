@@ -14,9 +14,12 @@ clean-targets:
   - "target"
   - "dbt_packages"
 
+# Schema layout follows https://www.entropy-data.com/learn/data-products-with-dbt :
+# staging and intermediate models stay in the profile's default schema (internal
+# to the data product); output port models override schema='op_v1' via inline
+# config(), landing in <profile_schema>_op_v1 — the only public surface.
 models:
   {{DBT_PROJECT_NAME}}:
-    +materialized: table
     staging:
       +materialized: view
     intermediate:
