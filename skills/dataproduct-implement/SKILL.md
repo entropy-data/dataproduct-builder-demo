@@ -1,6 +1,6 @@
 ---
 name: dataproduct-implement
-description: Given an Entropy Data data product URL or id, fetch its ODCS, generate Snowflake dbt models, run dbt-ol (ship lineage to Entropy Data on the spot), run dbt tests, and run datacontract tests — end-to-end in one go. Demo-grade. Trigger when the user asks to "implement the data product <url>", "build the dbt pipeline for this data product", or "scaffold dbt models from a data contract".
+description: Given an Entropy Data data product URL or id, fetch its ODCS, generate Snowflake dbt models, run dbt-ol (ship lineage to Entropy Data on the spot), run dbt tests, and run datacontract tests — end-to-end in one go. Demo-grade. Trigger when the user asks to "implement the data product <url-or-id> [from its data contract]", "build a data product that implements its data contract", "build the dbt pipeline for this data product", "scaffold dbt models from a data contract", or any close variant referring to implementing, building, or materializing an existing published data product against its contract.
 ---
 
 # Implement a data product from its data contract (demo)
