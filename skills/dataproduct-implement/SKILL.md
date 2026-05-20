@@ -45,13 +45,14 @@ Then proceed.
 ### Step 0 — Pre-checks
 
 - Confirm `dbt_project.yml` exists at the working directory root. If not, route the user to `dataproduct-bootstrap` and stop.
-- Confirm `dbt --version`, `dbt-ol --version`, `datacontract --version`, and `entropy-data --version` are on PATH. If any are missing, surface the install line (`uv pip install dbt-core dbt-snowflake openlineage-dbt 'datacontract-cli[snowflake]' entropy-data`) and stop. Also confirm `jq` and `yq` are on PATH — they are used to derive credentials below.
+- Confirm `dbt --version`, `dbt-ol --version`, `datacontract --version`, and `entropy-data --version` are on PATH. If any are missing **but** a local `.venv` is present in the working directory, activate it first (`source .venv/bin/activate`) and re-check — many dbt projects install their toolchain into a project-local venv rather than globally, and shell state doesn't carry over between subprocess invocations unless the venv is on PATH. If anything is still missing after activation, surface the install line (`uv pip install dbt-core dbt-snowflake openlineage-dbt 'datacontract-cli[snowflake]' entropy-data`) and stop. Also confirm `jq` and `yq` are on PATH — they are used to derive credentials below.
 - Confirm `entropy-data connection test` succeeds. If not, stop and tell the user to run `entropy-data connection add <name> --host <host> --api-key <key>`.
 - **Assume the user has a working Snowflake dbt profile.** Do not audit `~/.dbt/profiles.yml` for correctness; if it is misconfigured, `dbt parse` / `dbt-ol run` will surface a clear error and the user can fix it then.
-- **Derive runtime credentials from existing config — do not require the user to export env vars.** Resolve them at the point of use:
+- **Derive runtime credentials and OpenLineage transport target from the active connection — do not require the user to export env vars, and do not trust a `url:` that may be baked into `openlineage.yml`.** Resolve them at the point of use:
+  - `OPENLINEAGE__TRANSPORT__URL` ← `entropy-data connection get -o json | jq -r .host` (the active connection's host). The env var overrides any `url:` in `openlineage.yml`, so the lineage event always ships to the deployment the user is currently authenticated against — independent of what the repo happens to have committed in that file.
   - `OPENLINEAGE__TRANSPORT__AUTH__APIKEY` ← `entropy-data connection get -o json | jq -r .api_key` (the active connection's API key — note the field is `api_key`, not `apiKey`; `-o json` returns it in clear text).
   - `DATACONTRACT_SNOWFLAKE_USERNAME` / `_PASSWORD` / `_ROLE` / `_WAREHOUSE` ← `~/.dbt/profiles.yml`. The profile is `yq '.profile' dbt_project.yml`; the target is the profile's `target:` (or the explicit `--target` you'll pass to dbt); read `user` / `password` / `role` / `warehouse` from `outputs.<target>`.
-  If a value is genuinely missing from both sources (the connection has no key, or the dbt profile is missing a field), stop and tell the user which source to fix. Do not echo or persist these values; export them only inline with the command that needs them.
+  If a value is genuinely missing from both sources (the connection has no host/key, or the dbt profile is missing a field), stop and tell the user which source to fix. Do not echo or persist these values; export them only inline with the command that needs them.
 
 ### Step 1 — Resolve the data product
 
@@ -169,14 +170,15 @@ Confirm with the user: "Run `dbt-ol run` against your Snowflake target now? This
 
 If the user has TODOs left in any output-port model (unwired `from`, derived columns, multi-source joins), warn them that the run will fail those models. Offer to scope to only the models with no TODOs: `dbt-ol run --select <wired-model-1> <wired-model-2>`.
 
-Command (default target inferred from `dbt_project.yml`'s `profile:` block — usually `dev` for local runs). Export the OpenLineage API key inline by reading it from the entropy-data CLI connection (resolved in Step 0); do not require the user to have it in their shell:
+Command (default target inferred from `dbt_project.yml`'s `profile:` block — usually `dev` for local runs). Export the OpenLineage transport URL **and** API key inline by reading them from the entropy-data CLI connection (resolved in Step 0); do not require the user to have them in their shell, and do not trust whatever `url:` `openlineage.yml` happens to contain:
 
 ```
+OPENLINEAGE__TRANSPORT__URL=$(entropy-data connection get -o json | jq -r .host) \
 OPENLINEAGE__TRANSPORT__AUTH__APIKEY=$(entropy-data connection get -o json | jq -r .api_key) \
   dbt-ol run --target <target>
 ```
 
-This is the Entropy Data API key the lineage transport in `openlineage.yml` uses to authenticate.
+`OPENLINEAGE__TRANSPORT__URL` is the host the lineage event is shipped to; `OPENLINEAGE__TRANSPORT__AUTH__APIKEY` is the Entropy Data API key it authenticates with. Both come from the active `entropy-data connection`, so the run targets whatever deployment (cloud, self-hosted, local) the user is currently authenticated against — regardless of what (if anything) the repo's `openlineage.yml` declares.
 
 Capture stdout and exit code. Non-zero means at least one model failed; surface the dbt log section, do not retry silently.
 

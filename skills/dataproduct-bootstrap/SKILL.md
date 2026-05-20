@@ -116,14 +116,14 @@ End with this two-part recap. Use the `Status` enum: `created`, `already present
 | Model layout | … | `models/{input_ports,staging,intermediate,output_ports/v1}/` |
 | ODPS | … | `<DATA_PRODUCT_ID>.odps.yaml` |
 | Output-port contract | … | `<CONTRACT_PATH>` (schema seeded with `id` + `updated_at`) |
-| `openlineage.yml` | … | transport pointed at `<API_HOST>` |
+| `openlineage.yml` | … | transport URL omitted from the file; set at run time via `OPENLINEAGE__TRANSPORT__URL` env var |
 | GitHub Actions workflow | … | `.github/workflows/data-product.yml` |
 
 **Part 2 — next steps.** Bullet list:
 
 - `uv venv && source .venv/bin/activate && uv pip install dbt-core dbt-snowflake openlineage-dbt datacontract-cli entropy-data`
 - This demo assumes `~/.dbt/profiles.yml` already has a working Snowflake target. `profiles.yml.example` is checked in as a reference if you need to recreate the profile elsewhere; otherwise ignore it.
-- Set `OPENLINEAGE__TRANSPORT__AUTH__APIKEY=<your-entropy-data-api-key>` so `dbt-ol run` can publish lineage immediately.
+- Set `OPENLINEAGE__TRANSPORT__URL=<your-entropy-data-host>` and `OPENLINEAGE__TRANSPORT__AUTH__APIKEY=<your-entropy-data-api-key>` so `dbt-ol run` can publish lineage immediately. The committed `openlineage.yml` omits the URL on purpose so the same repo runs correctly against any deployment (cloud, self-hosted, local) — the URL comes from the env var. The `dataproduct-implement` skill handles this automatically by deriving both from the active `entropy-data connection`.
 - `git init && git add . && git commit -m "Initial commit"`, then push to GitHub.
 - Set GitHub repository secrets for the workflow: `ENTROPY_DATA_API_KEY`, `DBT_SNOWFLAKE_ACCOUNT`, `DBT_SNOWFLAKE_USER`, `DBT_SNOWFLAKE_PASSWORD`, `DBT_SNOWFLAKE_ROLE`, `DBT_SNOWFLAKE_WAREHOUSE`.
 - Run **dataproduct-implement** next to generate models from a published data product, run dbt, run dbt + datacontract tests, and ship the first lineage event.

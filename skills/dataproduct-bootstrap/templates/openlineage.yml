@@ -1,6 +1,9 @@
+# The transport URL is intentionally omitted: it's set at run time via the
+# OPENLINEAGE__TRANSPORT__URL env var, derived from the active entropy-data
+# connection. That way the same repo runs correctly against any deployment
+# (cloud, self-hosted, local) without this file drifting.
 transport:
   type: http
-  url: {{API_HOST}}
   endpoint: api/v1/lineage?dataProductId={{DATA_PRODUCT_ID}}&outputPortId={{OUTPUT_PORT_NAME}}
   auth:
     type: api_key
