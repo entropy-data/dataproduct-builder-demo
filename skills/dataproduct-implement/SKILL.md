@@ -84,7 +84,7 @@ From `CONTRACT` you'll need `schema` (table + properties: `logicalType`, `requir
 
 ### Step 3 — Translate ODCS schema to dbt artifacts
 
-**Output column identifier rule (applies to every property in this step and Step 4).** For every contract property, resolve `OUT_COL = property.physicalName // property.name` — prefer `physicalName` when present, fall back to `name`. Use `OUT_COL` for the SQL alias **and** the `<table>.yml` `columns: - name:` entry so the projected column, the dbt tests, and the materialized warehouse column all agree with what the contract declares. If `OUT_COL` is not already all-uppercase, double-quote it in the SQL alias (`as "MixedCase"`) so Snowflake preserves it verbatim instead of folding to uppercase. This keeps the dbt side (projected column, tests, materialized column) aligned with the contract's `physicalName`. `datacontract test` resolves each field by `physicalName` when set (ODCS standard), so a contract whose logical `name` differs from its `physicalName` — e.g. a semantic concept `name: brand` with `physicalName: BRAND` — tests correctly against the physical column.
+**Output column identifier rule (applies to every property in this step and Step 4).** For every contract property, use the property's `name` directly as the SQL alias **and** the `<table>.yml` `columns: - name:` entry. On Snowflake, contract property names are **UPPERCASE by convention** (e.g. `SKU`, `ARTICLE_NAME`) — Snowflake folds unquoted identifiers to uppercase and `datacontract test`'s soda-core driver quotes the contract `name` verbatim when querying. Using uppercase in the contract makes the SQL alias, the materialized column, the dbt tests, and `datacontract test`'s lookup all line up against the same Snowflake-stored identifier. Don't rely on `physicalName` to bridge a case mismatch — current `datacontract-cli` (≥ 0.11.5) quotes by `name`, not `physicalName`, so a contract with `name: sku` + `physicalName: SKU` fails on Snowflake with "Required Column Missing".
 
 For each contract:
 
@@ -174,7 +174,7 @@ For each output port:
 
    One pair (`*.odcs.yaml` + `*.source.yaml`) per agreement. Surface diffs and ask before overwriting an existing file.
 
-2. **Match input columns to output columns** by name — comparing against both the input property's `name` and its `physicalName` — or an obvious synonym only if the input contract's description makes it explicit. For each output column, if exactly one input has a matching column, project `cast(<input_col> as <snowflake_type>) as <OUT_COL>` (`OUT_COL` per the output column identifier rule in Step 3). Otherwise leave `null as <OUT_COL>` with a `-- TODO:` comment.
+2. **Match input columns to output columns by `name`** — or an obvious synonym only if the input contract's description makes it explicit. For each output column, if exactly one input has a matching column, project `cast(<input_col> as <snowflake_type>) as <OUT_COL>` (`OUT_COL` per the output column identifier rule in Step 3). Otherwise leave `null as <OUT_COL>` with a `-- TODO:` comment.
 
 3. **Write the SQL body.**
    - **Single input source, columns match 1:1** → replace the TODO `from` with `from {{ source('<provider-data-product-id>_<provider-output-port-id>', '<table>') }}`.
