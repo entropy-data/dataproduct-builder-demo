@@ -174,7 +174,12 @@ For each output port:
 
    One pair (`*.odcs.yaml` + `*.source.yaml`) per agreement. Surface diffs and ask before overwriting an existing file.
 
-2. **Match input columns to output columns by `name`** — or an obvious synonym only if the input contract's description makes it explicit. For each output column, if exactly one input has a matching column, project `cast(<input_col> as <snowflake_type>) as <OUT_COL>` (`OUT_COL` per the output column identifier rule in Step 3). Otherwise leave `null as <OUT_COL>` with a `-- TODO:` comment.
+2. **Match input columns to output columns**, in this order. Stop at the first signal that yields exactly one candidate.
+   1. **Same semantic concept** — both columns declare a `type: semantics` entry in `authoritativeDefinitions` whose URL ends in the same path segment after normalization (lowercase, strip non-alphanumeric — so `…/processedTimestamp` matches `…/processed_timestamp`). Scheme, host, and org-id prefix differences don't disqualify.
+   2. **Same name** (case-insensitive).
+   3. **Token superset** — tokenize both names on `_` and case boundaries; the shorter side's tokens are all contained in the longer side's. Covers patterns like `<X>_NAME` ⊃ `<x>`, `<DOMAIN>_<X>` ⊃ `<x>`, `<X>_TIMESTAMP` ⊃ `timestamp`. Generic single-token output names (`id`, `name`, `type`, `value`, `code`, `key`) need a second signal — require (1) or a description echo (the upstream column's description names the output concept) before treating as a hit.
+
+   If exactly one upstream column matches, project `cast(<input_col> as <snowflake_type>) as <OUT_COL>` (`OUT_COL` per the output column identifier rule in Step 3). If multiple match, write `cast(null as <type>) as <OUT_COL>  -- TODO: candidates: <names>` and list them so the user can pick. If none match, write `cast(null as <type>) as <OUT_COL>  -- TODO: source <description>`.
 
 3. **Write the SQL body.**
    - **Single input source, columns match 1:1** → replace the TODO `from` with `from {{ source('<provider-data-product-id>_<provider-output-port-id>', '<table>') }}`.
