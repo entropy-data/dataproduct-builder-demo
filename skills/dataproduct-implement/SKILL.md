@@ -31,15 +31,16 @@ Before running Step 0, print this plan to the user verbatim:
 > 1. Pre-checks: confirm this is a dbt project; `dbt`, `dbt-ol`, `datacontract`, `entropy-data`, `jq`, and `yq` are on PATH; the Entropy Data API key is available from `entropy-data connection`; Snowflake credentials are readable from `~/.dbt/profiles.yml`.
 > 2. Resolve the data product by id (`entropy-data dataproducts get <id>`).
 > 3. Fetch each output port's data contract (`entropy-data datacontracts get`) and save it to `datacontracts/`. Remote contract is the source of truth — local file is always overwritten.
-> 4. Translate the ODCS schema into dbt models: append missing column projections to `models/output_ports/<table>.sql`, missing column entries to `<table>.yml`. Existing SQL and tests are preserved byte-identical.
-> 5. Wire input ports from active access agreements, write sources, project columns 1:1, leave the rest as TODOs.
-> 6. Run `dbt parse` to catch syntax errors.
-> 7. Run `dbt-ol run` against the user's Snowflake target — this builds the tables AND ships the lineage event to Entropy Data on the spot.
-> 8. Run `dbt test` against the same target.
-> 9. Run `datacontract test` against each output-port contract.
-> 10. Stamp the data product on Entropy Data with the `dataProductBuilder` customProperty.
-> 11. Trigger a Snowflake re-ingest so the platform's asset inventory picks up the new tables (`entropy-data integrations run`).
-> 12. Summarize what was generated, what ran, and what's still TODO.
+> 4. Validate the contract against the target platform's conventions (e.g. UPPERCASE identifiers on Snowflake). If fixable bugs are found, offer to patch and publish the corrected contract back to Entropy Data.
+> 5. Translate the ODCS schema into dbt models: append missing column projections to `models/output_ports/<table>.sql`, missing column entries to `<table>.yml`. Existing SQL and tests are preserved byte-identical.
+> 6. Wire input ports from active access agreements, write sources, project columns 1:1, leave the rest as TODOs.
+> 7. Run `dbt parse` to catch syntax errors.
+> 8. Run `dbt-ol run` against the user's Snowflake target — this builds the tables AND ships the lineage event to Entropy Data on the spot.
+> 9. Run `dbt test` against the same target.
+> 10. Run `datacontract test` against each output-port contract.
+> 11. Stamp the data product on Entropy Data with the `dataProductBuilder` customProperty.
+> 12. Trigger a Snowflake re-ingest so the platform's asset inventory picks up the new tables (`entropy-data integrations run`).
+> 13. Summarize what was generated, what ran, and what's still TODO.
 
 Then proceed.
 
@@ -81,6 +82,35 @@ For each selected output port: `entropy-data datacontracts get <contract-id> -o 
 **Always overwrite the local file with the remote response.** The remote contract is the spec; the local SQL is the implementation. A divergence is the whole point of the run — someone changed the contract and the implementation needs to catch up. (Step 3 appends column projections to the existing SQL without touching CTEs / joins / filters, so the implementation logic is safe.)
 
 From `CONTRACT` you'll need `schema` (table + properties: `logicalType`, `required`, `primaryKey`, `unique`, `description`, `classification`) and `servers` (Snowflake server the contract test runs against).
+
+### Step 2.5 — Validate the contract against the target platform
+
+Before generating dbt artifacts, scan the contract for bugs that would break tests downstream and offer to fix them in one pass — closing the drift loop the same run, with the patched contract published back to Entropy Data.
+
+The validation is keyed off `servers[].type`. For each declared server type, apply that platform's conventions; skip schema-only contracts. Today only Snowflake is enforced (it's the only target this skill supports), but the structure is intentionally per-platform so other targets can be added without rewriting the rule.
+
+**Snowflake checks** — for every property in every schema covered by a `type: snowflake` server:
+
+- **Mixed-case identifier.** Snowflake folds unquoted identifiers to UPPERCASE; `datacontract-cli` (≥ 0.11.5) quotes the contract `name` verbatim. Any `name` containing a lowercase letter is queried as `"<lowercase>"` and fails to match the stored UPPERCASE column. Normalize the `name` to UPPERCASE.
+- **Redundant `physicalName`.** A `physicalName` whose value equals the UPPERCASE form of `name` adds no information once `name` is normalized. Drop it.
+
+If nothing is flagged, continue silently to Step 3.
+
+Otherwise, surface a single confirmation listing every fix (one bullet per property × issue), then ask:
+
+> Found N convention issue(s) for Snowflake on contract `<CONTRACT_ID>`:
+>   - property `<old-name>`: rename `name` → `<NEW-NAME>`
+>   - property `<NEW-NAME>`: drop redundant `physicalName: <value>`
+>
+> Apply, save to `datacontracts/<table>_v<N>.odcs.yaml`, and publish the corrected contract back to Entropy Data? [Y/n]
+
+On `Y`:
+
+1. Patch the local file in place — `yq -i` works for surgical updates. One rename + one `physicalName` delete per flagged property. Keep `version` unchanged (this is a convention fix, not a schema change consumers need to see as a new version).
+2. Publish back: `entropy-data datacontracts put <CONTRACT_ID> --file datacontracts/<table>_v<N>.odcs.yaml`. Surface any non-2xx response and stop.
+3. Re-read `CONTRACT` from the patched file. Continue to Step 3.
+
+On `n`: continue with a warning that Step 8's `datacontract test` will fail on the un-normalized properties. Don't ask again this run.
 
 ### Step 3 — Translate ODCS schema to dbt artifacts
 
@@ -288,6 +318,7 @@ End with this two-part recap. Use the `Status` enum: `created`, `updated`, `alre
 | Data product | already present | `<DATA_PRODUCT_ID>` |
 | `dataProductBuilder` customProperty | … | "added" / "already present" |
 | Output-port data contract `<CONTRACT_ID>` | … | `datacontracts/<table>_v<N>.odcs.yaml` |
+| Contract validation | … | "passed" / "normalized & republished: `<property>` × N" / "issues found, user declined fix" |
 | Input-port contracts | … | `<N>` files at `models/input_ports/<...>.odcs.yaml` |
 | Input-port sources | … | `<N>` files at `models/input_ports/<...>.source.yaml` |
 | Model `<table>.sql` | … | "wired to `<source>`" / "join TODO" / "skipped per user" |

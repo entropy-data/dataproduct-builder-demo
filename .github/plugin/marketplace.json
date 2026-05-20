@@ -6,13 +6,13 @@
   },
   "metadata": {
     "description": "Demo data product builder for Snowflake.",
-    "version": "0.2.2"
+    "version": "0.2.3"
   },
   "plugins": [
     {
       "name": "dataproduct-builder-demo",
       "description": "Demo-grade builder for Snowflake dbt data products with Entropy Data.",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "source": "."
     }
   ]
