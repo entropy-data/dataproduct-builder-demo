@@ -11,7 +11,7 @@ For populating the contract schema and dbt model bodies from a published data pr
 
 ## What this skill produces
 
-After running, the directory contains (layout follows [the guide](https://www.entropy-data.com/learn/data-products-with-dbt)):
+After running, the directory contains:
 
 ```
 .
@@ -22,16 +22,15 @@ After running, the directory contains (layout follows [the guide](https://www.en
 ├── <data-product-id>.odps.yaml
 ├── openlineage.yml
 ├── .github/workflows/data-product.yml
-├── datacontracts/
-│   └── <table>_v1.odcs.yaml
-├── models/
-│   ├── input_ports/sources.yml
-│   ├── staging/
-│   ├── intermediate/
-│   └── output_ports/
-│       └── <table>.yml
-└── tests/
-    └── assert_updated_at_not_in_future.sql
+├── macros/
+│   └── get_custom_schema.sql
+└── models/
+    ├── input_ports/_models.yml
+    ├── staging/_models.yml
+    ├── intermediate/_models.yml
+    └── output_ports/v1/
+        ├── _models.yml
+        └── <contract-id>.odcs.yaml
 ```
 
 ## How to run this skill
@@ -69,15 +68,15 @@ Ask the user for these in a single prompt. Do not generate any files until you h
 | `DATABASE` | Snowflake database | `ENTROPY_DATA_PROD` |
 | `TABLE` | First output port table name | `customer_activity` |
 
-Derive (per https://www.entropy-data.com/learn/data-products-with-dbt):
+Derive (matching the `dataproduct-builder-dbt` plugin's conventions, per the `dataproduct-dbt` skill):
 
-- `DBT_PROJECT_NAME` = `DATA_PRODUCT_ID` — also the dbt profile name and the profile's default schema (the *internal* layer: staging + intermediate models materialize here).
+- `DBT_PROJECT_NAME` = `DATA_PRODUCT_ID` — also the dbt profile name and the profile's fallback default schema. Staging + intermediate models override it to `internal_<DBT_PROJECT_NAME>` via `+schema:` in `dbt_project.yml`.
 - `OUTPUT_PORT_NAME` = `DATA_PRODUCT_ID`
 - `CONTRACT_ID` = `<DATA_PRODUCT_ID>-v1`
-- `CONTRACT_FILE` = `<TABLE>_v1.odcs.yaml` — snake-case table name + major version, matching what `dataproduct-implement` writes.
-- `CONTRACT_PATH` = `datacontracts/<CONTRACT_FILE>`
+- `CONTRACT_FILE` = `<CONTRACT_ID>.odcs.yaml`
+- `CONTRACT_PATH` = `models/output_ports/v1/<CONTRACT_FILE>`
 - `ODPS_FILE` = `<DATA_PRODUCT_ID>.odps.yaml`
-- `OUTPUT_PORT_SCHEMA` = `<DBT_PROJECT_NAME>_OP_V1` — the schema dbt produces by concatenating the profile schema with the output port model's `schema='op_v1'` override. This is the schema the data contract and the platform's integration scan target. Snowflake uppercases unquoted identifiers, so this value is uppercase regardless of how `DATA_PRODUCT_ID` was entered.
+- `OUTPUT_PORT_SCHEMA` = `OP_<TABLE>_V1` (UPPERCASE) — the output-port schema in Snowflake, set literally by the `generate_schema_name` macro override in `macros/get_custom_schema.sql` (so it's NOT suffixed with the profile schema). Per dataproduct-builder-dbt's `dataproduct-dbt` convention the schema is `op_<output-port-id>_v<N>`; this demo plugin keys off `TABLE` because it scaffolds a single output port whose id equals the table name (matching the worked example in `dataproduct-dbt` SKILL.md: `op_customer_activity_v1`). This is the only public surface; internal staging/intermediate land in `INTERNAL_<DBT_PROJECT_NAME>`. The contract's `servers[].schema` and the platform's integration scan target this schema.
 
 Resolve `API_HOST` from the entropy-data CLI connection: `entropy-data connection get -o json` → `host`. If the CLI is not connected, stop and tell the user to run `entropy-data connection add <name> --host <host> --api-key <key>` first. The demo does not run without a working connection.
 
@@ -95,13 +94,15 @@ Templates live under `${PLUGIN_ROOT}/skills/dataproduct-bootstrap/templates/`. C
 | `profiles.yml.example` | `profiles.yml.example` |
 | `data-product.odps.yaml` | `<DATA_PRODUCT_ID>.odps.yaml` |
 | `openlineage.yml` | `openlineage.yml` |
-| `models/input_ports/sources.yml` | `models/input_ports/sources.yml` |
-| `models/output_ports/_model.yml` | `models/output_ports/<TABLE>.yml` |
-| `datacontracts/contract.odcs.yaml` | `<CONTRACT_PATH>` |
-| `tests/assert_updated_at_not_in_future.sql` | `tests/assert_updated_at_not_in_future.sql` |
+| `macros/get_custom_schema.sql` | `macros/get_custom_schema.sql` |
+| `models/input_ports/_models.yml` | `models/input_ports/_models.yml` |
+| `models/staging/_models.yml` | `models/staging/_models.yml` |
+| `models/intermediate/_models.yml` | `models/intermediate/_models.yml` |
+| `models/output_ports/v1/_models.yml` | `models/output_ports/v1/_models.yml` |
+| `models/output_ports/v1/contract.odcs.yaml` | `<CONTRACT_PATH>` |
 | `.github/workflows/data-product.yml` | `.github/workflows/data-product.yml` |
 
-Also create empty `models/staging/`, `models/intermediate/`, `analyses/`, `macros/`, `seeds/`, `snapshots/` directories with a `.gitkeep` each.
+Also create empty `analyses/`, `macros/`, `seeds/`, `snapshots/`, `tests/` directories with a `.gitkeep` each.
 
 ### Step 4 — Final report
 
@@ -115,12 +116,9 @@ End with this two-part recap. Use the `Status` enum: `created`, `already present
 | `profiles.yml.example` | … | Snowflake |
 | `README.md` | … | written |
 | `.gitignore` | … | written |
-| Model layout | … | `models/{input_ports,staging,intermediate,output_ports}/` |
-| Output-port model YAML | … | `models/output_ports/<TABLE>.yml` (per-model, seeded with `ID` + `UPDATED_AT`) |
-| Input-port sources stub | … | `models/input_ports/sources.yml` |
-| Sample custom test | … | `tests/assert_updated_at_not_in_future.sql` |
+| Model layout | … | `models/{input_ports,staging,intermediate,output_ports/v1}/` |
 | ODPS | … | `<DATA_PRODUCT_ID>.odps.yaml` |
-| Output-port contract | … | `<CONTRACT_PATH>` (schema seeded with `ID` + `UPDATED_AT`) |
+| Output-port contract | … | `<CONTRACT_PATH>` (schema seeded with `id` + `updated_at`) |
 | `openlineage.yml` | … | transport URL omitted from the file; set at run time via `OPENLINEAGE__TRANSPORT__URL` env var |
 | GitHub Actions workflow | … | `.github/workflows/data-product.yml` |
 

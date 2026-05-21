@@ -9,8 +9,9 @@
       role: <fill in>
       database: {{DATABASE}}
       warehouse: <fill in>
-      # Profile schema is the internal layer (staging, intermediate). The output
-      # port model overrides this via config(schema='op_v1'), landing in the
-      # contract-described OUTPUT_PORT_SCHEMA.
+      # Profile schema is dbt's fallback default; with the `generate_schema_name`
+      # macro override in macros/get_custom_schema.sql, each layer overrides it:
+      #   staging/ + intermediate/  →  internal_{{DBT_PROJECT_NAME}}
+      #   output_ports/v1/<table>   →  op_<table>_v1   (only public surface)
       schema: {{DBT_PROJECT_NAME}}
       threads: 4

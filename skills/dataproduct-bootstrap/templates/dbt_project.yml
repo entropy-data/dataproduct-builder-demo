@@ -14,13 +14,32 @@ clean-targets:
   - "target"
   - "dbt_packages"
 
-# Schema layout follows https://www.entropy-data.com/learn/data-products-with-dbt :
-# staging and intermediate models stay in the profile's default schema (internal
-# to the data product); output port models override schema='op_v1' via inline
-# config(), landing in <profile_schema>_op_v1 — the only public surface.
+# Silence two non-actionable dbt warnings:
+# - UnusedResourceConfigPath fires for the staging/intermediate config blocks
+#   below until the first stg_*/int_* model exists — kept as scaffolding so
+#   future models inherit the materialization without re-declaring it.
+# - CustomTopLevelKeyDeprecation fires for every ODCS file under
+#   models/output_ports/v<N>/ because dbt 1.11+ parses any YAML in model paths
+#   and doesn't recognize ODCS's `apiVersion` top-level key. ODCS contracts
+#   live next to the SQL they govern by convention; the warning is expected.
+flags:
+  warn_error_options:
+    silence:
+      - UnusedResourceConfigPath
+      - CustomTopLevelKeyDeprecation
+
+# Schema layout per dataproduct-builder-dbt's dataproduct-dbt skill. The
+# `generate_schema_name` macro in macros/get_custom_schema.sql takes `+schema:`
+# / `schema='...'` values literally instead of suffixing onto the target's
+# default schema. With that override:
+#   - staging/ + intermediate/  →  internal_{{DBT_PROJECT_NAME}}
+#   - output_ports/v1/<table>   →  op_<output_port_id>_v1  (via inline config())
+# Consumers only see the output-port schema; the internal layer stays hidden.
 models:
   {{DBT_PROJECT_NAME}}:
     staging:
       +materialized: view
+      +schema: internal_{{DBT_PROJECT_NAME}}
     intermediate:
       +materialized: view
+      +schema: internal_{{DBT_PROJECT_NAME}}

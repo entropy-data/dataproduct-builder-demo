@@ -1,0 +1,18 @@
+version: 2
+
+# Published output port tables. The version directory (v1/, v2/, ...) holds both
+# the SQL models and the ODCS contract that governs them, so the contract lives
+# next to the implementation it commits to. One entry per output port; the model
+# name matches the table name in the ODCS contract. `dataproduct-implement`
+# fills this file with columns and tests derived from the contract.
+# models:
+#   - name: {{TABLE}}
+#     description: {{PURPOSE}}
+#     config:
+#       meta:
+#         data_contract:
+#           id: {{CONTRACT_ID}}
+#           file: models/output_ports/v1/{{CONTRACT_FILE}}
+#       materialized: table
+#       contract:
+#         enforced: true

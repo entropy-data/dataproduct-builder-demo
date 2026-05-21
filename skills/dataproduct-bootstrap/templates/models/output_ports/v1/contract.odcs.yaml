@@ -14,12 +14,12 @@ schema:
   - name: "{{TABLE}}"
     physicalType: table
     properties:
-      - name: ID
+      - name: id
         description: Primary key.
         logicalType: string
         required: true
         primaryKey: true
-      - name: UPDATED_AT
+      - name: updated_at
         description: Timestamp when this record was written by dbt.
         logicalType: timestamp
         required: true
@@ -31,5 +31,7 @@ servers:
   - server: production
     type: snowflake
     database: "{{DATABASE}}"
-    # Output-port schema is derived from the profile schema by dbt: <SCHEMA>_OP_V1.
+    # Output-port schema is set literally by macros/get_custom_schema.sql via
+    # the output port model's `config(schema='op_<table>_v1')`. Resolves to
+    # OP_<TABLE>_V1 in Snowflake (uppercased on materialization).
     schema: "{{OUTPUT_PORT_SCHEMA}}"
