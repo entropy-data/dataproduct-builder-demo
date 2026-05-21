@@ -89,30 +89,28 @@ Before generating dbt artifacts, scan the contract for bugs that would break tes
 
 The validation is keyed off `servers[].type`. For each declared server type, apply that platform's conventions; skip schema-only contracts. Today only Snowflake is enforced (it's the only target this skill supports), but the structure is intentionally per-platform so other targets can be added without rewriting the rule.
 
-**Snowflake checks** — for every `type: snowflake` server in `servers:`:
+**Snowflake checks** — for every property in every schema covered by a `type: snowflake` server. Server-level identifiers (database, schema, table names) are part of the demo's static setup — leave them as-is; this step only addresses property-level drift introduced by users editing the contract through the UI.
 
-- **Property: mixed-case `name`.** Snowflake folds unquoted identifiers to UPPERCASE; `datacontract-cli` (≥ 0.11.5) quotes the contract `name` verbatim. Any `name` containing a lowercase letter is queried as `"<lowercase>"` and fails to match the stored UPPERCASE column. Normalize the `name` to UPPERCASE.
-- **Property: redundant `physicalName`.** A `physicalName` whose value equals the UPPERCASE form of `name` adds no information once `name` is normalized. Drop it.
-- **Server: `schema` doesn't match the `op_<output-port-id>_v<N>` convention.** Per `dataproduct-builder-dbt`'s `dataproduct-dbt` skill (and what the demo plugin's bootstrap generates), the output-port schema in Snowflake is `OP_<TABLE>_V<N>` (UPPERCASE — Snowflake stores unquoted identifiers uppercased) where `<TABLE>` is `schema[0].name` and `<N>` is the major version from `version:` (default `1`). The macro override in `macros/get_custom_schema.sql` makes the dbt SQL's `{{ config(schema='op_<table>_v<N>') }}` land in exactly that schema. If `servers[].schema` is anything other than `OP_<TABLE>_V<N>`, the contract is out of convention — normalize it. Without this, `datacontract test` later queries a different schema than the one dbt materializes into, and an agent's instinct on failure ("contract is source of truth — align dbt to contract") regresses the SQL config out of convention.
+- **Mixed-case identifier.** Snowflake folds unquoted identifiers to UPPERCASE; `datacontract-cli` (≥ 0.11.5) quotes the contract `name` verbatim. Any `name` containing a lowercase letter is queried as `"<lowercase>"` and fails to match the stored UPPERCASE column. Normalize the `name` to UPPERCASE.
+- **Redundant `physicalName`.** A `physicalName` whose value equals the UPPERCASE form of `name` adds no information once `name` is normalized. Drop it.
 
 If nothing is flagged, continue silently to Step 3.
 
-Otherwise, surface a single confirmation listing every fix and ask:
+Otherwise, surface a single confirmation listing every fix (one bullet per property × issue), then ask:
 
 > Found N convention issue(s) for Snowflake on contract `<CONTRACT_ID>`:
 >   - property `<old-name>`: rename `name` → `<NEW-NAME>`
 >   - property `<NEW-NAME>`: drop redundant `physicalName: <value>`
->   - server `<server-name>`: rename `schema` `<OLD-SCHEMA>` → `<OP_TABLE_VN>`
 >
 > Apply, save to `models/output_ports/v<N>/<contract-id>.odcs.yaml`, and publish the corrected contract back to Entropy Data? [Y/n]
 
 On `Y`:
 
-1. Patch the local file in place — `yq -i` works for surgical updates. One rename + one `physicalName` delete per flagged property; one `servers[*].schema` rewrite per non-conventional server. Keep `version` unchanged (these are convention fixes, not schema changes consumers need to see as a new version).
+1. Patch the local file in place — `yq -i` works for surgical updates. One rename + one `physicalName` delete per flagged property. Keep `version` unchanged (this is a convention fix, not a schema change consumers need to see as a new version).
 2. Publish back: `entropy-data datacontracts put <CONTRACT_ID> --file models/output_ports/v<N>/<contract-id>.odcs.yaml`. Surface any non-2xx response and stop.
 3. Re-read `CONTRACT` from the patched file. Continue to Step 3.
 
-On `n`: continue with a warning that Step 8's `datacontract test` will fail (property names won't match Snowflake columns, or the contract's declared schema won't match the one dbt materializes into). Don't ask again this run.
+On `n`: continue with a warning that Step 8's `datacontract test` will fail on the un-normalized properties. Don't ask again this run.
 
 ### Step 3 — Translate ODCS schema to dbt artifacts
 
