@@ -40,6 +40,32 @@ Then open Codex, run `/plugins`, and pick `dataproduct-builder-demo`.
 
 Any agent that reads `AGENTS.md` picks up the routing manifest. Or copy the `skills/` directory into the path your coding agent expects.
 
+## Update
+
+The plugin is updated in place; skills evolve as the demo gets sharper. Pull the latest version through your agent's marketplace.
+
+### Claude Code
+
+```
+/plugin marketplace update dataproduct-builder-demo
+```
+
+### OpenAI Codex
+
+```
+codex plugin marketplace update dataproduct-builder-demo
+```
+
+### GitHub Copilot CLI
+
+```
+/plugin marketplace update dataproduct-builder-demo
+```
+
+### Other agents (Cursor, Aider, etc.)
+
+`git pull` in the directory you cloned `skills/` from.
+
 ## Connect
 
 Both skills authenticate against Entropy Data through a connection registered with the [entropy-data CLI](https://github.com/entropy-data/entropy-data-cli) (requires [uv](https://docs.astral.sh/uv/)).

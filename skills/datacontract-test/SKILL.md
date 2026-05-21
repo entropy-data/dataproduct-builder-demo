@@ -1,6 +1,14 @@
 ---
 name: datacontract-test
-description: Run `datacontract test` against ODCS contracts in the project to verify the live Snowflake data still conforms to schema, quality rules, and freshness. Handles two kinds of contracts with different semantics: output-port contracts under `datacontracts/*.odcs.yaml` (tested against this project's Snowflake — "am I still producing what I promised?") and input-port contracts under `models/input_ports/*.odcs.yaml` (tested against the upstream Snowflake server — "is upstream still producing what I trusted?"). Trigger when the user asks to "test the data contracts", "verify the data product matches its contract", "are we still contract-conformant", "check upstream drift", or "run the contract tests".
+description: >-
+  Run `datacontract test` against ODCS contracts in the project to verify the live Snowflake
+  data still conforms to schema, quality rules, and freshness. Handles two kinds of contracts
+  with different semantics: output-port contracts under `datacontracts/*.odcs.yaml` (tested
+  against this project's Snowflake — "am I still producing what I promised?") and input-port
+  contracts under `models/input_ports/*.odcs.yaml` (tested against the upstream Snowflake
+  server — "is upstream still producing what I trusted?"). Trigger when the user asks to
+  "test the data contracts", "verify the data product matches its contract", "are we still
+  contract-conformant", "check upstream drift", or "run the contract tests".
 ---
 
 # Test ODCS data contracts against Snowflake
