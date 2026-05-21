@@ -333,7 +333,7 @@ End with this two-part recap. Use the `Status` enum: `created`, `updated`, `alre
 
 - For each model with a join or derived-column TODO, name the inputs and the missing logic.
 - For each `failed` row, the concrete next action (which model, which test, which contract rule).
-- If `dbt-ol run` succeeded, link the user to `<API_HOST>/dataproducts/<DATA_PRODUCT_ID>` so they can see the lineage event land.
+- If `dbt-ol run` succeeded, link the user to `<API_HOST>/<ORG_SLUG>/dataproducts/<DATA_PRODUCT_ID>` so they can see the lineage event land. Derive `<ORG_SLUG>` from the active connection: `entropy-data connection get -o json | jq -r .vanity_url`. The `<ORG_SLUG>` segment is required — without it the app routes to a 404.
 - If GitHub Actions are set up, remind the user to set the workflow secrets (`ENTROPY_DATA_API_KEY`, `DBT_SNOWFLAKE_*`) so the CI run reproduces the local run.
 
 If everything passed and there are no TODOs, write: `Pipeline implemented, materialized, tested, and lineage published. Nothing else to do.`
