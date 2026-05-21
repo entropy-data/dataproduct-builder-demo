@@ -35,17 +35,21 @@ export DATACONTRACT_SNOWFLAKE_WAREHOUSE=<your-snowflake-warehouse>
 source .venv/bin/activate
 dbt-ol run    # runs dbt and ships OpenLineage to Entropy Data
 dbt test
-datacontract test models/output_ports/v1/{{CONTRACT_FILE}} --server production --logs
+datacontract test datacontracts/{{CONTRACT_FILE}} --server production --logs
 ```
 
 ## Layout
 
+Follows [Building Data Products with dbt](https://www.entropy-data.com/learn/data-products-with-dbt):
+
 ```
+datacontracts/        # ODCS data contracts — source of truth for the output schema
 models/
-├── input_ports/      # external sources you read from
-├── staging/          # 1:1 cleaned views over input ports
-├── intermediate/     # joined / shaped views
-└── output_ports/v1/  # published tables — one per output port, ODCS contract alongside
+├── input_ports/      # external sources you read from (sources.yml + per-agreement files)
+├── staging/          # 1:1 cleaned views over input ports — stg_*.sql
+├── intermediate/     # joined / shaped views — int_*.sql
+└── output_ports/     # published tables — one .sql + .yml per output port
+tests/                # custom data tests — assert_*.sql
 ```
 
 ## Publishing

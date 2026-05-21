@@ -11,7 +11,7 @@ For populating the contract schema and dbt model bodies from a published data pr
 
 ## What this skill produces
 
-After running, the directory contains:
+After running, the directory contains (layout follows [the guide](https://www.entropy-data.com/learn/data-products-with-dbt)):
 
 ```
 .
@@ -22,13 +22,16 @@ After running, the directory contains:
 ├── <data-product-id>.odps.yaml
 ├── openlineage.yml
 ├── .github/workflows/data-product.yml
-└── models/
-    ├── input_ports/_models.yml
-    ├── staging/_models.yml
-    ├── intermediate/_models.yml
-    └── output_ports/v1/
-        ├── _models.yml
-        └── <contract-id>.odcs.yaml
+├── datacontracts/
+│   └── <table>_v1.odcs.yaml
+├── models/
+│   ├── input_ports/sources.yml
+│   ├── staging/
+│   ├── intermediate/
+│   └── output_ports/
+│       └── <table>.yml
+└── tests/
+    └── assert_updated_at_not_in_future.sql
 ```
 
 ## How to run this skill
@@ -71,8 +74,8 @@ Derive (per https://www.entropy-data.com/learn/data-products-with-dbt):
 - `DBT_PROJECT_NAME` = `DATA_PRODUCT_ID` — also the dbt profile name and the profile's default schema (the *internal* layer: staging + intermediate models materialize here).
 - `OUTPUT_PORT_NAME` = `DATA_PRODUCT_ID`
 - `CONTRACT_ID` = `<DATA_PRODUCT_ID>-v1`
-- `CONTRACT_FILE` = `<CONTRACT_ID>.odcs.yaml`
-- `CONTRACT_PATH` = `models/output_ports/v1/<CONTRACT_FILE>`
+- `CONTRACT_FILE` = `<TABLE>_v1.odcs.yaml` — snake-case table name + major version, matching what `dataproduct-implement` writes.
+- `CONTRACT_PATH` = `datacontracts/<CONTRACT_FILE>`
 - `ODPS_FILE` = `<DATA_PRODUCT_ID>.odps.yaml`
 - `OUTPUT_PORT_SCHEMA` = `<DBT_PROJECT_NAME>_OP_V1` — the schema dbt produces by concatenating the profile schema with the output port model's `schema='op_v1'` override. This is the schema the data contract and the platform's integration scan target. Snowflake uppercases unquoted identifiers, so this value is uppercase regardless of how `DATA_PRODUCT_ID` was entered.
 
@@ -92,14 +95,13 @@ Templates live under `${PLUGIN_ROOT}/skills/dataproduct-bootstrap/templates/`. C
 | `profiles.yml.example` | `profiles.yml.example` |
 | `data-product.odps.yaml` | `<DATA_PRODUCT_ID>.odps.yaml` |
 | `openlineage.yml` | `openlineage.yml` |
-| `models/input_ports/_models.yml` | `models/input_ports/_models.yml` |
-| `models/staging/_models.yml` | `models/staging/_models.yml` |
-| `models/intermediate/_models.yml` | `models/intermediate/_models.yml` |
-| `models/output_ports/v1/_models.yml` | `models/output_ports/v1/_models.yml` |
-| `models/output_ports/v1/contract.odcs.yaml` | `<CONTRACT_PATH>` |
+| `models/input_ports/sources.yml` | `models/input_ports/sources.yml` |
+| `models/output_ports/_model.yml` | `models/output_ports/<TABLE>.yml` |
+| `datacontracts/contract.odcs.yaml` | `<CONTRACT_PATH>` |
+| `tests/assert_updated_at_not_in_future.sql` | `tests/assert_updated_at_not_in_future.sql` |
 | `.github/workflows/data-product.yml` | `.github/workflows/data-product.yml` |
 
-Also create empty `analyses/`, `macros/`, `seeds/`, `snapshots/`, `tests/` directories with a `.gitkeep` each.
+Also create empty `models/staging/`, `models/intermediate/`, `analyses/`, `macros/`, `seeds/`, `snapshots/` directories with a `.gitkeep` each.
 
 ### Step 4 — Final report
 
@@ -113,9 +115,12 @@ End with this two-part recap. Use the `Status` enum: `created`, `already present
 | `profiles.yml.example` | … | Snowflake |
 | `README.md` | … | written |
 | `.gitignore` | … | written |
-| Model layout | … | `models/{input_ports,staging,intermediate,output_ports/v1}/` |
+| Model layout | … | `models/{input_ports,staging,intermediate,output_ports}/` |
+| Output-port model YAML | … | `models/output_ports/<TABLE>.yml` (per-model, seeded with `ID` + `UPDATED_AT`) |
+| Input-port sources stub | … | `models/input_ports/sources.yml` |
+| Sample custom test | … | `tests/assert_updated_at_not_in_future.sql` |
 | ODPS | … | `<DATA_PRODUCT_ID>.odps.yaml` |
-| Output-port contract | … | `<CONTRACT_PATH>` (schema seeded with `id` + `updated_at`) |
+| Output-port contract | … | `<CONTRACT_PATH>` (schema seeded with `ID` + `UPDATED_AT`) |
 | `openlineage.yml` | … | transport URL omitted from the file; set at run time via `OPENLINEAGE__TRANSPORT__URL` env var |
 | GitHub Actions workflow | … | `.github/workflows/data-product.yml` |
 

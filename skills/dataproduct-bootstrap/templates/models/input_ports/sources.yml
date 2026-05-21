@@ -1,0 +1,12 @@
+version: 2
+
+# Input ports — external Snowflake sources this data product reads from.
+# Layout follows https://www.entropy-data.com/learn/data-products-with-dbt :
+# add one entry under `sources:` per source database.
+#
+# `dataproduct-implement` additionally writes per-agreement source files alongside
+# this one for sources reached via Entropy Data access agreements:
+#   models/input_ports/<provider-output-port-id>.source.yaml
+# Both file shapes are loaded by dbt.
+
+sources: []

@@ -14,12 +14,12 @@ schema:
   - name: "{{TABLE}}"
     physicalType: table
     properties:
-      - name: id
+      - name: ID
         description: Primary key.
         logicalType: string
         required: true
         primaryKey: true
-      - name: updated_at
+      - name: UPDATED_AT
         description: Timestamp when this record was written by dbt.
         logicalType: timestamp
         required: true
