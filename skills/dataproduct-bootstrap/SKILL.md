@@ -88,6 +88,7 @@ Templates live under `${PLUGIN_ROOT}/skills/dataproduct-bootstrap/templates/`. C
 
 | Template | Destination |
 |---|---|
+| `pyproject.toml` | `pyproject.toml` (lists dbt-core, dbt-snowflake, openlineage-dbt, datacontract-cli[snowflake], entropy-data under `[dependency-groups].dev` so a single `uv sync` materializes the venv) |
 | `dbt_project.yml` | `dbt_project.yml` |
 | `.gitignore` | `.gitignore` |
 | `README.md` | `README.md` |

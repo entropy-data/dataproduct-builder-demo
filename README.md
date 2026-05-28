@@ -70,12 +70,16 @@ codex plugin marketplace update dataproduct-builder-demo
 
 Both skills authenticate against Entropy Data through a connection registered with the [entropy-data CLI](https://github.com/entropy-data/entropy-data-cli) (requires [uv](https://docs.astral.sh/uv/)).
 
-Create a user-scoped key in the Entropy Data web UI (**Organization Settings → API Keys → Create new API key**, scope `User (personal token)`) and add the connection:
+The skills use a **per-project venv** for `entropy-data`, `datacontract`, `dbt`, and the rest. After `dataproduct-bootstrap` scaffolds a project, run `uv sync` from the project root to install everything at the pinned versions, then invoke them as `uv run <cli> …`.
+
+The one exception is the first call to `dataproduct-bootstrap` itself, which runs against an empty directory (no `pyproject.toml`, no venv yet) and needs `entropy-data` available globally for its lookup step. Install once per machine:
 
 ```
 uv tool install --upgrade entropy-data
 entropy-data connection add default --api-key <your-api-key> --host <your-entropy-data-host>
 ```
+
+Create a user-scoped key in the Entropy Data web UI (**Organization Settings → API Keys → Create new API key**, scope `User (personal token)`).
 
 ## Use
 

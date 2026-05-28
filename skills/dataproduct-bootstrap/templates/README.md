@@ -4,11 +4,13 @@ dbt data product `{{DATA_PRODUCT_ID}}` on Snowflake. Published to [Entropy Data]
 
 ## Install
 
+Project Python deps (dbt-core, dbt-snowflake, openlineage-dbt, datacontract-cli[snowflake], entropy-data):
+
 ```bash
-uv venv
-source .venv/bin/activate
-uv pip install dbt-core dbt-snowflake openlineage-dbt datacontract-cli entropy-data
+uv sync
 ```
+
+`uv sync` creates `.venv/` with everything from `pyproject.toml`'s `[dependency-groups].dev`. All invocations below use the venv via `uv run` — no activation needed.
 
 ## Configure
 
@@ -32,10 +34,9 @@ export DATACONTRACT_SNOWFLAKE_WAREHOUSE=<your-snowflake-warehouse>
 ## Run
 
 ```bash
-source .venv/bin/activate
-dbt-ol run    # runs dbt and ships OpenLineage to Entropy Data
-dbt test
-datacontract test models/output_ports/v1/{{CONTRACT_FILE}} --server production --logs
+uv run dbt-ol run    # runs dbt and ships OpenLineage to Entropy Data
+uv run dbt test
+uv run datacontract test models/output_ports/v1/{{CONTRACT_FILE}} --server production --logs
 ```
 
 ## Layout

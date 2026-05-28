@@ -23,13 +23,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
 
-      - name: Install dependencies
-        run: pip install dbt-core dbt-snowflake openlineage-dbt 'datacontract-cli[snowflake]' entropy-data
+      - name: Sync Python deps
+        # Installs dbt-core, dbt-snowflake, openlineage-dbt,
+        # datacontract-cli[snowflake], entropy-data (and other dev deps)
+        # into the project's .venv at the versions pinned by uv.lock.
+        # All `uv run …` invocations below use this venv.
+        run: uv sync
 
       - name: Create profiles.yml
         run: |
@@ -51,30 +52,30 @@ jobs:
           EOF
 
       - name: dbt deps
-        run: dbt deps
+        run: uv run dbt deps
 
       - name: dbt run
-        run: dbt-ol run --target prod
+        run: uv run dbt-ol run --target prod
         env:
           OPENLINEAGE__TRANSPORT__URL: {{API_HOST}}
           OPENLINEAGE__TRANSPORT__AUTH__APIKEY: ${{ secrets.ENTROPY_DATA_API_KEY }}
 
       - name: dbt test
-        run: dbt test --target prod
+        run: uv run dbt test --target prod
 
       - name: Publish data product
-        run: entropy-data dataproducts put {{DATA_PRODUCT_ID}} --file {{ODPS_FILE}}
+        run: uv run entropy-data dataproducts put {{DATA_PRODUCT_ID}} --file {{ODPS_FILE}}
         env:
           ENTROPY_DATA_API_KEY: ${{ secrets.ENTROPY_DATA_API_KEY }}
 
       - name: Publish data contract
-        run: entropy-data datacontracts put {{CONTRACT_ID}} --file models/output_ports/v1/{{CONTRACT_FILE}}
+        run: uv run entropy-data datacontracts put {{CONTRACT_ID}} --file models/output_ports/v1/{{CONTRACT_FILE}}
         env:
           ENTROPY_DATA_API_KEY: ${{ secrets.ENTROPY_DATA_API_KEY }}
 
       - name: Data contract test
         run: |
-          datacontract test models/output_ports/v1/{{CONTRACT_FILE}} \
+          uv run datacontract test models/output_ports/v1/{{CONTRACT_FILE}} \
             --server production \
             --publish $API/test-results
         env:

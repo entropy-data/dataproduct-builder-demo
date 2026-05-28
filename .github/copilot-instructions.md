@@ -27,7 +27,9 @@ Skill files reference `${PLUGIN_ROOT}` to locate `templates/`. On Claude Code it
 - **`dbt-ol`** (`openlineage-dbt`) — runs dbt with OpenLineage so lineage ships to Entropy Data on the spot.
 - **`datacontract`** (`datacontract-cli[snowflake]`) — runs contract tests against Snowflake.
 
-If any CLI is missing, surface the install line and stop.
+Per-project venv: every scaffolded project's `pyproject.toml` lists all four under `[dependency-groups].dev`. `uv sync` materializes `.venv/`; skills invoke as `uv run <cli> …`. The one exception is `dataproduct-bootstrap`'s pre-check (no `pyproject.toml` yet) — a global `uv tool install entropy-data` is needed once for that.
+
+If `uv run <cli>` fails inside a project, the fix is `uv sync`; surface that and stop. Don't propose `uv tool install` as a fallback inside a project — it defeats version pinning.
 
 ## Conventions
 

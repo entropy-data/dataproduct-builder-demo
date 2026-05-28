@@ -45,7 +45,7 @@ Then proceed.
 
 ### Step 0 — Pre-checks
 
-- Confirm `datacontract --version` is on PATH. If not, stop and tell the user to install it: `uv tool install 'datacontract-cli[snowflake]'`.
+- Confirm `uv run --quiet datacontract --version` succeeds from the project root. If it fails, run `uv sync` (the bootstrap template seeds `datacontract-cli[snowflake]` as a dev dep in `pyproject.toml`) and retry. If `uv sync` still doesn't make it available, stop and tell the user to verify `datacontract-cli[snowflake]` is listed in `pyproject.toml`'s `[dependency-groups].dev`. **Do not propose `uv tool install` here** — per-project venv is the convention. Use `uv run datacontract …` for every CLI invocation in this skill.
 - Confirm at least one `*.odcs.yaml` exists under `models/output_ports/**/` or `models/input_ports/`. If not, stop and tell the user there is nothing to test.
 - Confirm Snowflake credentials for the Data Contract CLI are in the environment. The CLI reads `DATACONTRACT_SNOWFLAKE_*` env vars, **not** `~/.dbt/profiles.yml`. The minimum set:
 
@@ -78,7 +78,7 @@ For each contract in `CONTRACTS`:
 For each contract:
 
 ```
-datacontract test <path-to-contract>.odcs.yaml --server <server> --logs
+uv run datacontract test <path-to-contract>.odcs.yaml --server <server> --logs
 ```
 
 Where `<path-to-contract>` is the file resolved in Step 1 — typically `models/output_ports/v<N>/<file>.odcs.yaml` for output contracts, or `models/input_ports/<file>.odcs.yaml` for input contracts. The CLI does not care which directory; the role only matters for how Step 4 reports the result.

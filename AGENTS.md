@@ -22,12 +22,16 @@ The skill files reference `${PLUGIN_ROOT}` to locate `templates/`. On Claude Cod
 
 ## CLIs the skills shell out to
 
-- **`entropy-data`** (PyPI: `entropy-data`; install with `uv tool install entropy-data`) — used to fetch data products and contracts, publish updates, list teams.
+- **`entropy-data`** (PyPI: `entropy-data`) — fetch data products and contracts, publish updates, list teams.
 - **`dbt`** (`dbt-snowflake` adapter) — required at runtime by both skills.
 - **`dbt-ol`** (PyPI: `openlineage-dbt`) — runs dbt with OpenLineage so the demo ships lineage to Entropy Data immediately during implementation.
 - **`datacontract`** (PyPI: `datacontract-cli[snowflake]`) — runs contract tests against the Snowflake server defined in the ODCS file.
 
-If any CLI is missing, surface the install line and stop — do not try to install on the user's behalf without confirmation.
+**Install pattern: per-project venv.** Every scaffolded project ships a `pyproject.toml` listing all four CLIs (plus dbt-snowflake) as dev deps. Running `uv sync` from the project root materializes `.venv/` with everything at the versions pinned in `uv.lock`. **All skills invoke these CLIs as `uv run <cli> …`** so the project's pinned version is the one that runs, independent of anything globally installed.
+
+The one exception is `dataproduct-bootstrap`'s pre-check step: it runs against an empty directory before any `pyproject.toml` exists, so it requires a one-time globally available `entropy-data` (`uv tool install entropy-data`) for the initial DP / contract lookup. Once bootstrap scaffolds the project and runs `uv sync`, every subsequent skill uses the venv exclusively.
+
+If `uv run <cli>` fails inside a project, surface `uv sync` from the project root as the fix and stop — do not install on the user's behalf without confirmation. Do not propose `uv tool install` as a fallback inside a project; that defeats version pinning.
 
 ## Conventions when running skills
 

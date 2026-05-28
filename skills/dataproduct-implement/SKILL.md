@@ -47,18 +47,16 @@ Then proceed.
 ### Step 0 — Pre-checks
 
 - Confirm `dbt_project.yml` exists at the working directory root. If not, route the user to `dataproduct-bootstrap` and stop.
-- **Set up (or refresh) the project-local venv with the full toolchain.** This is idempotent — `uv pip install` is a no-op when the dependency is already satisfied:
+- **Sync the project's venv with the full toolchain.** `uv sync` is idempotent and pulls everything listed under `pyproject.toml`'s `[dependency-groups].dev` (dbt-core, dbt-snowflake, openlineage-dbt, datacontract-cli[snowflake], entropy-data) at the versions pinned in `uv.lock`:
 
   ```bash
-  [ -d .venv ] || uv venv
-  source .venv/bin/activate
-  uv pip install --quiet dbt-core dbt-snowflake openlineage-dbt 'datacontract-cli[snowflake]' entropy-data
+  uv sync
   ```
 
-  **Activate the venv before every bash call in subsequent steps** — shell state doesn't carry between bash invocations. Don't fall back to `uv tool install` for individual binaries; `dbt`, `dbt-ol`, and `datacontract` must share a single Python env so the Snowflake adapter is visible to all three.
-- Confirm `entropy-data connection test` succeeds. Otherwise stop and tell the user to run `entropy-data connection add <name> --host <host> --api-key <key>`.
+  **All subsequent CLI invocations in this skill use `uv run <cli>`** — that resolves to the venv's pinned binary without needing to activate. `dbt`, `dbt-ol`, and `datacontract` share one Python env this way, so the Snowflake adapter is visible to all three. **Do not propose `uv tool install` here** — per-project venv is the convention.
+- Confirm `uv run --quiet entropy-data connection test` succeeds. Otherwise stop and tell the user to run `uv run entropy-data connection add <name> --host <host> --api-key <key>`.
 - Confirm `jq` and `yq` are on PATH (system binaries, not pip-installed). Otherwise stop with `brew install jq yq` (macOS) or the apt equivalent.
-- Assume the user has a working Snowflake dbt profile. Don't audit `~/.dbt/profiles.yml`; if it's misconfigured, `dbt parse` / `dbt-ol run` will surface a clear error.
+- Assume the user has a working Snowflake dbt profile. Don't audit `~/.dbt/profiles.yml`; if it's misconfigured, `uv run dbt parse` / `uv run dbt-ol run` will surface a clear error.
 
 ### Step 1 — Resolve the data product
 
